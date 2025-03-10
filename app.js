@@ -19,16 +19,23 @@ const logger = pino({
 app.use(express.json())
 app.use(cookieParser())
 
+const corsOptions = {
+    origin: 'https://yellowgreen-crow-110465.hostingersite.com',
+    // origin: 'http://localhost:3000',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
+    credentials : true,
+}
+app.use(cors(corsOptions));
+
 
 app.use(session({ 
     store: new FileStore({}),
     secret: process.env.SESSION_SECRET,
-
     resave: false,
     saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 *60 * 24,
-        secure: false,  // Set to false if not using HTTPS
+        secure: true,  // Set to false if not using HTTPS
     }
 }))
 
