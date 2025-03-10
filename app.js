@@ -8,7 +8,6 @@ const session = require('express-session')
 const FileStore = require('session-file-store')(session)
 const { v4: uuidv4 } = require('uuid')
 const app = express()
-dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
 
 //apicontroller
 const user = require('./apicontroller/user')
@@ -23,11 +22,10 @@ app.use(cookieParser())
 
 app.use(session({ 
     store: new FileStore({}),
-    // secret: process.env.SESSION_SECRET,
-    secret: 'jeeva',
+    secret: process.env.SESSION_SECRET,
 
     resave: false,
-    saveUninitialized: false,
+    saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 *60 * 24,
         secure: false,  // Set to false if not using HTTPS
@@ -66,12 +64,12 @@ app.mysqlClient = mysql.createConnection({
     database: process.env.DB_NAME
 })    
 
-app.mysqlClient = mysql.createConnection({
-    host: 'localhost',
-    user: 'root',
-    password: 'root',
-    database: 'timesheet',
-})
+// app.mysqlClient = mysql.createConnection({
+//     host: 'localhost',
+//     user: 'root',
+//     password: 'root',
+//     database: 'timesheet',
+// })
 
 app.mysqlClient.connect(function (err){
     if (err) {
@@ -81,11 +79,11 @@ app.mysqlClient.connect(function (err){
 
         user(app)
 
-        app.listen(1000, () => {
-            console.log('listen 1000 port')
-        })
-        // app.listen(process.env.APP_PORT, () => {
-        //     logger.info(`listen ${process.env.APP_PORT} port`)
+        // app.listen(1000, () => {
+        //     console.log('listen 1000 port')
         // })
+        app.listen(process.env.APP_PORT, () => {
+            logger.info(`listen ${process.env.APP_PORT} port`)
+        })
     }
 })
