@@ -36,11 +36,9 @@ app.use(session({
     saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 *60 * 24,
-        secure: true,  // Set to false if not using HTTPS
-
+        secure: false,  // Set to false if not using HTTPS
     }
 }))
-
 
 app.use(
     pinoHttp({
