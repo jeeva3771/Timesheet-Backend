@@ -72,11 +72,10 @@ async function readUsers(req, res) {
     }
 }
 
-function dummy(req, res) {
+async function dummy(req, res) {
     const mysqlClient = req.app.mysqlClient
     try {
-    const countQuery = await
-            mysqlQuery(/*sql*/`
+    const countQuery = await mysqlQuery(/*sql*/`
                 SELECT
                     COUNT(*) AS totalUserCount
                 FROM 
