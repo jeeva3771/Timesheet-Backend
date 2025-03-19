@@ -72,7 +72,11 @@ async function readUsers(req, res) {
     }
 }
 
+function dummy(req, res) {
+    return "test"
+}
 
 module.exports = (app) => {
     app.get('/api/users', readUsers)
+    app.get('/api/dummy', dummy)
 }
