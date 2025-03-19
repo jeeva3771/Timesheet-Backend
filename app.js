@@ -11,7 +11,7 @@ const { v4: uuidv4 } = require('uuid')
 const app = express()
 
 //apicontroller
-const user = require('./apicontroller/user')
+const user = require('./apicontroller/users')
 
 const logger = pino({
     level: 'info'

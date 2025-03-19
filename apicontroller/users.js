@@ -26,8 +26,8 @@ async function readUsers(req, res) {
         SELECT 
             u.*,
             ur.name AS createdName
-        FROM user AS u
-        LEFT JOIN user AS ur ON ur.userId = u.createdBy
+        FROM users AS u
+        LEFT JOIN users AS ur ON ur.userId = u.createdBy
         WHERE 
             u.deletedAt IS NULL AND 
             (u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)
@@ -37,8 +37,8 @@ async function readUsers(req, res) {
         SELECT
             COUNT(*) AS totalUserCount
         FROM 
-            user AS u
-        LEFT JOIN user AS ur ON ur.userId = u.createdBy
+            users AS u
+        LEFT JOIN users AS ur ON ur.userId = u.createdBy
         WHERE 
             u.deletedAt IS NULL AND
             (u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)
@@ -74,5 +74,5 @@ async function readUsers(req, res) {
 
 
 module.exports = (app) => {
-    app.get('/api/user', readUsers)
+    app.get('/api/users', readUsers)
 }
