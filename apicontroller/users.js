@@ -73,7 +73,22 @@ async function readUsers(req, res) {
 }
 
 function dummy(req, res) {
-    return "test"
+    const mysqlClient = req.app.mysqlClient
+    try {
+    const countQuery = await
+            mysqlQuery(/*sql*/`
+                SELECT
+                    COUNT(*) AS totalUserCount
+                FROM 
+                    users AS u
+                LEFT JOIN users AS ur ON ur.userId = u.createdBy
+                WHERE 
+                    u.deletedAt IS NULL`, [], mysqlClient)
+    
+    res.status(200).send(countQuery)
+} catch (error) {
+    console.log(error)
+}
 }
 
 module.exports = (app) => {
