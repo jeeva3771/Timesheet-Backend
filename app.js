@@ -32,12 +32,15 @@ app.use(cors(corsOptions));
 app.use(session({ 
     store: new FileStore({}),
     secret: process.env.SESSION_SECRET,
+    // resave: false,
+    // saveUninitialized: true,
+    // cookie: {
+    //     maxAge: 1000 * 60 *60 * 24,
+    //     secure: false,  // Set to false if not using HTTPS
+    // }
     resave: false,
-    saveUninitialized: true,
-    cookie: {
-        maxAge: 1000 * 60 *60 * 24,
-        secure: false,  // Set to false if not using HTTPS
-    }
+    saveUninitialized: false, // Ensures cookies are only set when needed
+    cookie: { secure: true, sameSite: "none", httpOnly: true },
 }))
 
 app.use(
