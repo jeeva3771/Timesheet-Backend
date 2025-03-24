@@ -1,14 +1,15 @@
 const dotenv = require('dotenv')
 const express = require('express')
-const mysql = require('mysql')
+const mysql = require('mysql2')
 const pino = require('pino')
 const pinoHttp = require('pino-http')
 const cookieParser = require('cookie-parser')
-const cors = require('cors')
+// const cors = require('cors')
 const session = require('express-session')
 const FileStore = require('session-file-store')(session)
 const { v4: uuidv4 } = require('uuid')
 const app = express()
+dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
 
 //apicontroller
 const user = require('./apicontroller/users')
@@ -20,13 +21,13 @@ const logger = pino({
 app.use(express.json())
 app.use(cookieParser())
 
-const corsOptions = {
-    origin: 'https://yellowgreen-crow-110465.hostingersite.com',
-    // origin: 'http://localhost:3000',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
-    credentials : true,
-}
-app.use(cors(corsOptions));
+// const corsOptions = {
+//     origin: 'https://yellowgreen-crow-110465.hostingersite.com',
+//     origin: 'http://localhost:3000',
+//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
+//     credentials : true,
+// }
+// app.use(cors(corsOptions));
 
 
 app.use(session({ 
@@ -64,20 +65,12 @@ app.use((req, res, next) => {
     next()
 })
 
-console.log(process.env.DB_HOST, process.env.DB_USER, process.env.DB_PASSWORD, process.env.DB_NAME)
 app.mysqlClient = mysql.createConnection({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME
 })    
-
-// app.mysqlClient = mysql.createConnection({
-//     host: 'localhost',
-//     user: 'root',
-//     password: 'root',
-//     database: 'timesheet',
-// })
 
 app.mysqlClient.connect(function (err){
     if (err) {
@@ -87,9 +80,6 @@ app.mysqlClient.connect(function (err){
 
         user(app)
 
-        // app.listen(1000, () => {
-        //     console.log('listen 1000 port')
-        // })
         app.listen(process.env.APP_PORT, () => {
             logger.info(`listen ${process.env.APP_PORT} port`)
         })

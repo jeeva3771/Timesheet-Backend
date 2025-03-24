@@ -1,15 +1,5 @@
 const { mysqlQuery } = require("../utilityclient/query")
 
-// async function readUsers(req, res) {
-//     const mysqlClient = req.app.mysqlClient
-//     try {
-//         const users = await mysqlQuery(/*sql*/`SELECT * FROM user`, [], mysqlClient)
-//         res.status(200).send(users)
-//     } catch (error) {
-//         console.log(error)
-//     }
-// }
-
 async function readUsers(req, res) {
     const mysqlClient = req.app.mysqlClient
     const limit = req.query.limit ? parseInt(req.query.limit) : null
@@ -20,7 +10,6 @@ async function readUsers(req, res) {
     const searchQuery = req.query.search || ''
     const searchPattern = `%${searchQuery}%`
     let queryParameters = null
-    
     
     let usersQuery = /*sql*/`
         SELECT 
@@ -68,29 +57,68 @@ async function readUsers(req, res) {
         })
 
     } catch (error) {
-        console.log(error)
+        req.log.error(error)
+        res.status(500).send(error)
     }
 }
 
-async function dummy(req, res) {
+async function readUserById(req, res) {
     const mysqlClient = req.app.mysqlClient
+    const userId = req.params.userId
+
     try {
-    const countQuery = await mysqlQuery(/*sql*/`
-                SELECT
-                    COUNT(*) AS totalUserCount
-                FROM 
-                    users AS u
-                LEFT JOIN users AS ur ON ur.userId = u.createdBy
-                WHERE 
-                    u.deletedAt IS NULL`, [], mysqlClient)
+        const [user] = await mysqlQuery(/*sql*/`
+            SELECT 
+                u.*,
+                ur.name AS createdName,
+                DATE_FORMAT(u.dob, "%d-%b-%Y %r") AS birth,
+                DATE_FORMAT(u.createdAt, "%d-%b-%Y %r") AS createdTime,
+                DATE_FORMAT(u.updatedAt, "%d-%b-%Y %r") AS updatedTime
+            FROM users AS u
+            LEFT JOIN users AS ur ON ur.userId = u.createdBy
+            LEFT JOIN users AS ur2 ON ur2.userId = u.updatedBy
+            WHERE 
+                u.deletedAt IS NULL AND u.userId = ?`, 
+            [userId], mysqlClient)
     
-    res.status(200).send(countQuery)
-} catch (error) {
-    console.log(error)
+        res.status(200).send(user)
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
 }
+
+async function createUser(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const {
+        name, 
+        dob, 
+        emailId, 
+        password, 
+        role, 
+        status, 
+        image
+    } = req.body    
+    const createdBy = req.session.user.userId
+
+    try {
+        const validationErrors = await validatePayload(req.body, false, null, mysqlClient);
+        if (validationErrors.length > 0) {
+            return res.status(400).send(validationErrors)
+        }
+
+        const newUser = await mysqlQuery(/*sql*/`
+            INSERT INTO users (name, dob, emailId, password, role, status, image)
+            `)
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
 }
 
 module.exports = (app) => {
     app.get('/api/users', readUsers)
-    app.get('/api/dummy', dummy)
+    app.get('/api/user/:userId', readUserById)
 }
+
+
