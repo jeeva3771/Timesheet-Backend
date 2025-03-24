@@ -115,22 +115,22 @@ async function readUserById(req, res) {
 
 async function createUser(req, res) {
     const mysqlClient = req.app.mysqlClient
+    let uploadedFilePath
     const {
         name, 
         dob, 
         emailId, 
         password, 
         role, 
-        status, 
-        image
+        status
     } = req.body    
     const createdBy = req.session.user.userId
 
     try {
-        const validationErrors = await validatePayload(req.body, false, null, mysqlClient);
-        if (validationErrors.length > 0) {
-            return res.status(400).send(validationErrors)
-        }
+        // const validationErrors = await validatePayload(req.body, false, null, mysqlClient);
+        // if (validationErrors.length > 0) {
+        //     return res.status(400).send(validationErrors)
+        // }
 
         if (req.file !== undefined){
             uploadedFilePath = req.file.path
@@ -146,15 +146,40 @@ async function createUser(req, res) {
 
         const newUser = await mysqlQuery(/*sql*/`
             INSERT INTO users 
-                (name, dob, emailId, password, role, status, image) 
+                (name, dob, emailId, password, role, status, createdBy)
             values(?, ?. ?, ?, ?, ?, ?)`,
-            [name, dob, emailId, password, role, status, image], mysqlClient)
+            [name, dob, emailId, password, role, status, createdBy], mysqlClient)
         
         if (newWarden.affectedRows === 0) {
             await deleteFile(uploadedFilePath, fs)
             return res.status(400).send('No insert was made')
         }
 
+        if (uploadedFilePath && newUser.length > 0) {
+            const originalDir = path.dirname(uploadedFilePath);
+            const newFilePath = path.join(originalDir, `${newUser.insertId}_${new Date}.jpg`)
+
+            fs.rename(uploadedFilePath, newFilePath, (err) => {
+                if (err) {
+                    return res.status(400).send('Error renaming file')
+                }
+            })
+
+            const image = await mysqlQuery(/*sql*/`
+                UPDATE 
+                    user 
+                    SET image = ? 
+                WHERE 
+                    userId = ? AND 
+                    deletedAt IS NULL`,
+                [newFilePath, newUser.insertId], mysqlClient)
+            
+            if (image.affectedRows === 0) {
+                return res.status(400).send('Image is not set')
+            }
+        }
+
+        res.status(201).send('Successfully created.')
     } catch (error) {
         req.log.error(error)
         res.status(500).send(error)
@@ -164,6 +189,7 @@ async function createUser(req, res) {
 module.exports = (app) => {
     app.get('/api/users', readUsers)
     app.get('/api/user/:userId', readUserById)
+    app.post('/api/user',multerMiddleware, createUser)
 }
 
 
