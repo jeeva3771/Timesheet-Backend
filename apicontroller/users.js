@@ -1,4 +1,29 @@
-const { mysqlQuery } = require("../utilityclient/query")
+const { mysqlQuery, deleteFile } = require("../utilityclient/query")
+const multer = require('multer')
+const fs = require('fs')
+const path = require('path')
+const sharp = require('sharp')
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, '..', 'useruploads'))
+    },
+    filename: function (req, file, cb) {
+        const wardenId = req.params.wardenId
+        cb(null, `${wardenId}.jpg`)
+    }
+})
+
+const fileFilter = (req, file, cb) => {
+    if (file.mimetype === 'image/jpeg') {
+        cb(null, true)
+    } else {
+        req.fileValidationError = 'Invalid file type. Only JPEG files are allowed.'
+        cb(null, false)
+    }
+};
+
+const upload = multer({ storage, fileFilter })
+const multerMiddleware = upload.single('image')
 
 async function readUsers(req, res) {
     const mysqlClient = req.app.mysqlClient
@@ -107,9 +132,29 @@ async function createUser(req, res) {
             return res.status(400).send(validationErrors)
         }
 
+        if (req.file !== undefined){
+            uploadedFilePath = req.file.path
+            await sharp(fs.readFileSync(uploadedFilePath))
+                .resize({
+                    width: parseInt(process.env.IMAGE_WIDTH),
+                    height: parseInt(process.env.IMAGE_HEIGHT),
+                    fit: sharp.fit.cover,
+                    position: sharp.strategy.center,
+                })
+                .toFile(uploadedFilePath)
+        }
+
         const newUser = await mysqlQuery(/*sql*/`
-            INSERT INTO users (name, dob, emailId, password, role, status, image)
-            `)
+            INSERT INTO users 
+                (name, dob, emailId, password, role, status, image) 
+            values(?, ?. ?, ?, ?, ?, ?)`,
+            [name, dob, emailId, password, role, status, image], mysqlClient)
+        
+        if (newWarden.affectedRows === 0) {
+            await deleteFile(uploadedFilePath, fs)
+            return res.status(400).send('No insert was made')
+        }
+
     } catch (error) {
         req.log.error(error)
         res.status(500).send(error)

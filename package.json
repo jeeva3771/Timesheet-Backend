@@ -4,15 +4,20 @@
     "devtest": "cross-env NODE_ENV=dev node app.js"
   },
   "dependencies": {
+    "bcrypt": "^5.1.1",
     "cookie-parser": "^1.4.7",
     "cors": "^2.8.5",
     "dotenv": "^16.4.7",
     "express": "^4.21.2",
     "express-session": "^1.18.1",
+    "fs": "^0.0.1-security",
+    "multer": "^1.4.5-lts.2",
     "mysql2": "^3.13.0",
+    "path": "^0.12.7",
     "pino": "^9.6.0",
     "pino-http": "^10.4.0",
     "session-file-store": "^1.5.0",
+    "sharp": "^0.33.5",
     "uuid": "^11.1.0"
   },
   "devDependencies": {
