@@ -209,7 +209,7 @@ async function createUser(req, res) {
         if (validationErrors.length > 0) {
             if (req.file !== undefined) {
                 uploadedFilePath = req.file.path
-                await deleteFile(uploadedFilePath, fs)
+                deleteFile(uploadedFilePath, fs)
             }
             return res.status(400).send(validationErrors)
         }
@@ -235,7 +235,7 @@ async function createUser(req, res) {
             [name, dob, emailId, hashGenerator, role, status, createdBy], mysqlClient)
         
         if (newUser.affectedRows === 0) {
-            await deleteFile(uploadedFilePath, fs)
+            deleteFile(uploadedFilePath, fs)
             return res.status(400).send('No insert was made')
         }
 
@@ -246,7 +246,7 @@ async function createUser(req, res) {
 
             fs.rename(uploadedFilePath, newFilePath, async (err) => {
                 if (err) {
-                    await deleteFile(uploadedFilePath, fs)
+                    deleteFile(uploadedFilePath, fs)
                     return res.status(400).send('Error renaming file')
                 }
             })
@@ -261,7 +261,7 @@ async function createUser(req, res) {
                 [filename, newUser.insertId], mysqlClient)
 
             if (image.affectedRows === 0) {
-                await deleteFile(uploadedFilePath, fs)
+                deleteFile(uploadedFilePath, fs)
                 return res.status(400).send('Image is not set')
             }
         }
@@ -291,23 +291,29 @@ async function editUser(req, res) {
 
     updates.push('updatedBy = ?')
     values.push(updatedBy, userId)
+    
+    if (req.file) {
+        uploadedFilePath = req.file.path
+    }
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (userIsValid.count === 0) {
-            return res.status(404).send(userIsValid)
+            if (uploadedFilePath) {
+                deleteFile(uploadedFilePath, fs)
+            }
+            return res.status(404).send('User is not found')
         }
 
         const validUpdate = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
         if (validUpdate.length > 0) {
+            if (uploadedFilePath) {
+                deleteFile(uploadedFilePath, fs)
+            }
             return res.status(400).send(validUpdate)
         }
 
-        const [user] = await mysqlQuery(/*sql*/`
-            SELECT image FROM users WHERE userId = ? AND deletedAt IS NULL`,
-            [userId], mysqlClient)
-
-        let oldFilePath = user.image  
+        const oldFilePath = await readUserImage(userId, mysqlClient)
 
         const updateUser = await mysqlQuery(/*sql*/`
             UPDATE 
@@ -317,55 +323,83 @@ async function editUser(req, res) {
             values, mysqlClient)
 
         if (updateUser.affectedRows === 0) {
+            if (uploadedFilePath) {
+                deleteFile(uploadedFilePath, fs)
+            }
             return res.status(204).send('No changes made')
         }
 
         if (req.file) {
-            uploadedFilePath = req.file.path
             await sharp(fs.readFileSync(uploadedFilePath))
-                .resize({
-                    width: parseInt(process.env.IMAGE_WIDTH),
-                    height: parseInt(process.env.IMAGE_HEIGHT),
-                    fit: sharp.fit.cover,
-                    position: sharp.strategy.center,
-                })
-                .toFile(uploadedFilePath)
-
-            const originalDir = path.dirname(uploadedFilePath)
-            const filename = `${userId}_${Date.now()}.jpg`
-            const newFilePath = path.join(originalDir, filename)
-
-            fs.rename(originalDir, newFilePath, async (err) => {
-                if (err) {
-                    await deleteFile(originalDir, fs)
-                    return res.status(400).send('Error renaming file')
-                }
+            .resize({
+                width: parseInt(process.env.IMAGE_WIDTH),
+                height: parseInt(process.env.IMAGE_HEIGHT),
+                fit: sharp.fit.cover,
+                position: sharp.strategy.center,
             })
+            .toFile(uploadedFilePath)
 
-            const image =  await mysqlQuery(/*sql*/`
+            const pathName = path.basename(uploadedFilePath)
+
+            const imageUpdate =  await mysqlQuery(/*sql*/`
                 UPDATE 
                     users 
                     SET image = ? 
                 WHERE 
                     userId = ? AND 
                     deletedAt IS NULL`,
-                [uploadedFilePath, userId], mysqlClient)
+                [pathName, userId], mysqlClient)
 
-            if (image.affectedRows === 0) {
+            if (imageUpdate.affectedRows === 0) {
+                deleteFile(uploadedFilePath, fs)
                 return res.status(204).send('Image not changed')
             }
-
-            if (oldFilePath !== undefined) {
-                console.log('deleted')
-                deleteFile(oldFilePath, fs)
-            }
+            deleteFile(oldFilePath, fs)
         }
 
         res.status(200).send('Successfully updated.')
     } catch (error) {
-        console.log(error)
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).send(error)
+    }
+}
+
+async function deleteUserById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.params.userId
+    const deletedBy = req.session.user.userId
+
+    try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (userIsValid.count === 0) {
+            return res.status(404).send('User is not found')
+        }
+
+        const deletedUser = await mysqlQuery(/*sql*/`
+            UPDATE users SET 
+                emailId = CONCAT(IFNULL(emailId, ''), '-', NOW()), 
+                deletedAt = NOW(), 
+                deletedBy = ?
+            WHERE userId = ? 
+            AND deletedAt IS NULL`,
+            [deletedBy, userId]
+        , mysqlClient)
+
+        if (deletedUser.affectedRows === 0) {
+            return res.status(404).send('No change made')
+        }
+
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+
+        if (oldFilePath) {
+            const rootDir = path.resolve(__dirname, '../')
+            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
+            deleteFile(imagePath, fs)
+        }
+        res.status(200).send('Deleted successfully')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
     }
 }
 
@@ -452,41 +486,23 @@ async function validateUserById(userId, mysqlClient) {
     
 }
 
-async function processAndRenameImage(filePath, userId) {
-    try {
-        await sharp(fs.readFileSync(filePath))
-            .resize({
-                width: parseInt(process.env.IMAGE_WIDTH),
-                height: parseInt(process.env.IMAGE_HEIGHT),
-                fit: sharp.fit.cover,
-                position: sharp.strategy.center,
-            })
-            .toFile(filePath)
+async function readUserImage(userId, mysqlClient) {
+    const [user] = await mysqlQuery(/*sql*/`
+        SELECT image FROM users 
+        WHERE userId = ? AND deletedAt IS NULL`,
+        [userId], mysqlClient
+    )
 
-        const originalDir = path.dirname(filePath)
-        const filename = `${userId}_${Date.now()}.jpg`
-        const newFilePath = path.join(originalDir, filename)
-
-        return new Promise((resolve, reject) => {
-            fs.rename(filePath, newFilePath, (err) => {
-                if (err) {
-                    reject(err)
-                } else {
-                    resolve(newFilePath)
-                }
-            })
-        })
-    } catch (error) {
-        throw error
-    }
+    return user ? user.image : null
 }
-
 module.exports = (app) => {
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)
     app.post('/api/users', multerMiddleware, createUser)
     app.put('/api/users/:userId', multerMiddleware, editUser)
+    app.delete('/api/users/:userId', deleteUserById)
+
 
 }
 
