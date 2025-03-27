@@ -1,10 +1,14 @@
-const { mysqlQuery, deleteFile,hashPassword, isPasswordValid } = require("../utilityclient/query")
+const { mysqlQuery, deleteFile,hashPassword, isPasswordValid } = require('../utilityclient/query')
+const otpGenerator = require('otp-generator')
+const sendEmail = require('../utilityclient/email')
 const multer = require('multer')
 const fs = require('fs')
 const path = require('path')
 const sharp = require('sharp')
 const yup = require('yup')
 const { subYears } = require('date-fns')
+const md5 = require('md5')
+
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -23,6 +27,13 @@ const fileFilter = (req, file, cb) => {
         req.fileValidationError = 'Invalid file type. Only JPEG files are allowed.'
         cb(null, false)
     }
+}
+const OTP_LIMIT_NUMBER = 6
+const OTP_OPTION = {
+    digits: true,
+    upperCaseAlphabets: true,
+    lowerCaseAlphabets: false,
+    specialChars: false
 }
 
 const upload = multer({ storage, fileFilter })
@@ -47,7 +58,7 @@ const userValidation = yup.object().shape({
 
     role: yup
         .string()
-        .oneOf(['admin', 'employee', 'manager', 'hr'], 'Role is invalid') // Add more roles if needed
+        .oneOf(['admin', 'employee', 'manager', 'hr'], 'Role is invalid') 
         .required('Role is required'),
 
     status: yup
@@ -99,7 +110,7 @@ async function authentication(req, res) {
         }
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).send(error)
     }
 }
 
@@ -209,7 +220,7 @@ async function createUser(req, res) {
         if (validationErrors.length > 0) {
             if (req.file !== undefined) {
                 uploadedFilePath = req.file.path
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
             }
             return res.status(400).send(validationErrors)
         }
@@ -235,7 +246,7 @@ async function createUser(req, res) {
             [name, dob, emailId, hashGenerator, role, status, createdBy], mysqlClient)
         
         if (newUser.affectedRows === 0) {
-            deleteFile(uploadedFilePath, fs)
+            await deleteFile(uploadedFilePath, fs)
             return res.status(400).send('No insert was made')
         }
 
@@ -246,7 +257,7 @@ async function createUser(req, res) {
 
             fs.rename(uploadedFilePath, newFilePath, async (err) => {
                 if (err) {
-                    deleteFile(uploadedFilePath, fs)
+                    await deleteFile(uploadedFilePath, fs)
                     return res.status(400).send('Error renaming file')
                 }
             })
@@ -261,7 +272,7 @@ async function createUser(req, res) {
                 [filename, newUser.insertId], mysqlClient)
 
             if (image.affectedRows === 0) {
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
                 return res.status(400).send('Image is not set')
             }
         }
@@ -300,7 +311,7 @@ async function editUser(req, res) {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (userIsValid.count === 0) {
             if (uploadedFilePath) {
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
             }
             return res.status(404).send('User is not found')
         }
@@ -308,12 +319,18 @@ async function editUser(req, res) {
         const validUpdate = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
         if (validUpdate.length > 0) {
             if (uploadedFilePath) {
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
             }
             return res.status(400).send(validUpdate)
         }
 
         const oldFilePath = await readUserImage(userId, mysqlClient)
+
+        const passwordIndex = ALLOWED_UPDATE_KEYS.indexOf('password')
+        if (passwordIndex >= 0 && req.body.password) {
+            const hashedPassword = md5(req.body.password)
+            values[passwordIndex] = hashedPassword
+        }
 
         const updateUser = await mysqlQuery(/*sql*/`
             UPDATE 
@@ -324,12 +341,12 @@ async function editUser(req, res) {
 
         if (updateUser.affectedRows === 0) {
             if (uploadedFilePath) {
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
             }
             return res.status(204).send('No changes made')
         }
 
-        if (req.file) {
+        if (oldFilePath !== uploadedFilePath) {
             await sharp(fs.readFileSync(uploadedFilePath))
             .resize({
                 width: parseInt(process.env.IMAGE_WIDTH),
@@ -351,10 +368,12 @@ async function editUser(req, res) {
                 [pathName, userId], mysqlClient)
 
             if (imageUpdate.affectedRows === 0) {
-                deleteFile(uploadedFilePath, fs)
+                await deleteFile(uploadedFilePath, fs)
                 return res.status(204).send('Image not changed')
             }
-            deleteFile(oldFilePath, fs)
+            const rootDir = path.resolve(__dirname, '../')
+            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
+            await deleteFile(imagePath, fs)
         }
 
         res.status(200).send('Successfully updated.')
@@ -375,6 +394,8 @@ async function deleteUserById(req, res) {
             return res.status(404).send('User is not found')
         }
 
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+
         const deletedUser = await mysqlQuery(/*sql*/`
             UPDATE users SET 
                 emailId = CONCAT(IFNULL(emailId, ''), '-', NOW()), 
@@ -389,12 +410,10 @@ async function deleteUserById(req, res) {
             return res.status(404).send('No change made')
         }
 
-        const oldFilePath = await readUserImage(userId, mysqlClient)
-
         if (oldFilePath) {
             const rootDir = path.resolve(__dirname, '../')
             const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
-            deleteFile(imagePath, fs)
+            await deleteFile(imagePath, fs)
         }
         res.status(200).send('Deleted successfully')
     } catch (error) {
@@ -402,6 +421,244 @@ async function deleteUserById(req, res) {
         res.status(500).send(error)
     }
 }
+
+async function updateUserAvatar(req, res) {
+    let uploadedFilePath
+    const userId = req.params.userId
+    const mysqlClient = req.app.mysqlClient
+
+    if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
+        return res.status(409).send('User is not valid to edit')
+    }
+
+    try {
+        if (req.fileValidationError) {
+           return res.status(400).send(req.fileValidationError)
+        }
+
+        uploadedFilePath = req.file.path
+        sharp(fs.readFileSync(uploadedFilePath))
+            .resize({
+                width: parseInt(process.env.IMAGE_WIDTH),
+                height: parseInt(process.env.IMAGE_HEIGHT),
+                fit: sharp.fit.cover,
+                position: sharp.strategy.center,
+            })
+            .toFile(uploadedFilePath)
+        
+        const pathName = path.basename(uploadedFilePath)
+
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+        
+        const imageUpdate =  await mysqlQuery(/*sql*/`
+            UPDATE 
+                users 
+                SET image = ? 
+            WHERE 
+                userId = ? AND 
+                deletedAt IS NULL`,
+            [pathName, userId], mysqlClient)
+
+        if (imageUpdate.affectedRows === 0) {
+            await deleteFile(uploadedFilePath, fs)
+            return res.status(204).send('Image not changed')
+        }
+        
+        if (oldFilePath) {
+            const rootDir = path.resolve(__dirname, '../')
+            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
+            await deleteFile(imagePath, fs)
+        }
+
+        return res.status(200).send('Image updated successfully')
+    } catch (error) {
+        req.log.error(error)
+        return res.status(500).send(error)
+    }
+}
+
+async function deleteUserAvatar(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.params.userId
+
+    if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
+        return res.status(409).send('User is not valid to delete image')
+    }
+
+    try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (userIsValid.count === 0) {
+            return res.status(404).send('User is not found to delete image')
+        }
+
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+        if (oldFilePath === null) {
+            return res.status(404).send('Image is not found')
+        }
+
+        const deleteImage = await mysqlQuery(/*sql*/`
+            UPDATE users SET image = NULL 
+            WHERE userId = ? AND 
+                deletedAt IS NULL`,
+            [userId], mysqlClient)
+        
+        if (deleteImage.affectedRows === 0) {
+            return res.status(204).send('User already deleted or image is not deleted')
+        }
+
+        const rootDir = path.resolve(__dirname, '../')
+        const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
+        await deleteFile(imagePath, fs)
+
+        res.status(200).send('Image deleted successfully')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
+
+async function generateOtp(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const currentTime = new Date().getTime()
+    const {
+        emailId = null
+    } = req.body
+
+    try {
+        const user = await mysqlQuery(/*sql*/`
+            SELECT otpTiming FROM users 
+            WHERE emailId = ? AND 
+                deletedAt IS NULL`,
+            [emailId], mysqlClient)
+
+        if (user.length === 0) {
+            return res.status(404).send('Invalid Email.')
+        }
+
+        const UserOtpTiming = user[0].otpTiming
+        const blockedTime = new Date(UserOtpTiming).getTime()
+
+        if (currentTime < blockedTime) {
+            return res.status(401).send('User is blocked for a few hours')
+        }
+
+        var otp = otpGenerator.generate(OTP_LIMIT_NUMBER, OTP_OPTION)
+
+        const sendOtp = await mysqlQuery(/*sql*/`
+            UPDATE users SET otp = ? 
+            WHERE emailId = ? AND 
+                deletedAt IS NULL`,
+            [otp, emailId], mysqlClient)
+
+        if (sendOtp.affectedRows === 0) {
+            return res.status(404).send('Enable to send OTP.')
+        }
+
+        const mailOptions = {
+            to: emailId,
+            subject: 'Password Reset OTP',
+            html: `Your OTP code is <b>${otp}</b>. Please use this to complete your verification.`
+        }
+        await sendEmail(mailOptions)
+
+        req.session.resetPassword = emailId
+        return res.status(200).send('success')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
+
+
+async function processResetPassword(req, res) {
+    const mysqlClient = req.app.mysqlClient;
+    const emailId = req.session.resetPassword;
+    const { password = null, otp = null } = req.body;
+    const currentTime = new Date().getTime();
+    const otpAttemptMax = 3;
+
+    try {
+        const userDetails = await mysqlQuery(/*sql*/`
+            SELECT otp, otpAttempt, otpTiming
+            FROM warden 
+            WHERE emailId = ? AND deletedAt IS NULL`,
+            [emailId],
+            mysqlClient
+        );
+
+        if (userDetails.length === 0) {
+            return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+        }
+
+        const userOtp = userDetails[0].otp;
+        const userOtpAttempt = userDetails[0].otpAttempt || 0;
+        const userOtpTiming = userDetails[0].otpTiming;
+
+        const blockedTime = new Date(userOtpTiming).getTime()
+
+        if (currentTime < blockedTime) {
+            return res.status(401).send('Access is currently blocked. Please retry after the designated wait time.')
+        }
+
+        if (userOtpAttempt >= otpAttemptMax) {
+            const updatedUser = await mysqlQuery(/*sql*/`UPDATE warden SET otp = null, otpAttempt = null, otpTiming = DATE_ADD(NOW(), INTERVAL 3 HOUR)
+            WHERE emailId = ? AND deletedAt IS NULL `, [emailId], mysqlClient)
+
+            req.session.destroy(err => {
+                if (err) {
+                    return res.status(500).send('Error destroying session.');
+                }
+
+                if (updatedUser.affectedRows === 0) {
+                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                }
+                return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
+            });
+        }
+
+        if (otp === userOtp) {
+            if (password.length < 6) {
+                return res.status(400).send(
+                    {errorType:'password', message:'Password must be at least 6 characters long.'}
+                )
+            } 
+            
+            const hashGenerator = await hashPassword(password)
+            const resetPassword = await mysqlQuery(/*sql*/`UPDATE warden SET password = ?, otp = null,
+                otpAttempt = null WHERE emailId = ? AND deletedAt IS NULL`,
+                [hashGenerator, emailId], mysqlClient)
+
+            if (resetPassword.affectedRows === 0) {
+                return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+            }
+
+            return res.status(200).send('success')
+        } else {
+            if (userOtpAttempt === 2) {
+                var updateBlockedTime = await mysqlQuery(/*sql*/`UPDATE warden SET otp = null, otpAttempt = null,
+                otpTiming = DATE_ADD(NOW(), INTERVAL 3 HOUR) WHERE emailId = ? AND deletedAt IS NULL`,
+                    [emailId], mysqlClient)
+
+                if (updateBlockedTime.affectedRows === 0) {
+                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                }
+                return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
+            } else {
+                var updateOtpAttempt = await mysqlQuery(/*sql*/`UPDATE warden SET otpAttempt = ? + 1
+                WHERE emailId = ? AND deletedAt IS NULL`, [userOtpAttempt, emailId], mysqlClient)
+
+                if (updateOtpAttempt.affectedRows === 0) {
+                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                }
+                return res.status(400).send({ errorType: 'OTP', message: 'Invalid OTP.' })
+            }
+        }
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error.message)
+    }
+}
+
 
 async function validatePayload(fileValidationError, body, isUpdate = false, userId = null, mysqlClient) {
     const errors = []
@@ -471,30 +728,30 @@ async function validateMainPayload(body, isUpdate = false, userId = null, mysqlC
 }
 
 async function validateUserById(userId, mysqlClient) {
-    const userIsValid = await mysqlQuery(/*sql*/`
+    const [userIsValid] = await mysqlQuery(/*sql*/`
         SELECT 
             COUNT(*) AS count 
         FROM users 
         WHERE userId = ? AND 
             deletedAt IS NULL`, 
     [userId], mysqlClient)
-
+   
     if (userIsValid.count === 0) {
         return userIsValid
     }
     return []
-    
 }
 
 async function readUserImage(userId, mysqlClient) {
     const [user] = await mysqlQuery(/*sql*/`
         SELECT image FROM users 
-        WHERE userId = ? AND deletedAt IS NULL`,
+        WHERE userId = ? AND 
+            deletedAt IS NULL`,
         [userId], mysqlClient
     )
-
-    return user ? user.image : null
+    return user ? user.image : null 
 }
+
 module.exports = (app) => {
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
@@ -502,7 +759,9 @@ module.exports = (app) => {
     app.post('/api/users', multerMiddleware, createUser)
     app.put('/api/users/:userId', multerMiddleware, editUser)
     app.delete('/api/users/:userId', deleteUserById)
-
+    app.delete('/api/users/:userId/deleteavatar', deleteUserAvatar)
+    app.put('/api/users/:userId/editavatar', multerMiddleware, updateUserAvatar)
+    app.post('/api/users/generateotp', generateOtp)
 
 }
 
