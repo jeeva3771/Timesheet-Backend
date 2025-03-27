@@ -571,16 +571,16 @@ async function generateOtp(req, res) {
 
 
 async function processResetPassword(req, res) {
-    const mysqlClient = req.app.mysqlClient;
-    const emailId = req.session.resetPassword;
-    const { password = null, otp = null } = req.body;
-    const currentTime = new Date().getTime();
-    const otpAttemptMax = 3;
+    const mysqlClient = req.app.mysqlClient
+    const emailId = req.session.resetPassword
+    const { password = null, otp = null } = req.body
+    const currentTime = new Date().getTime()
+    const otpAttemptMax = 3
 
     try {
         const userDetails = await mysqlQuery(/*sql*/`
             SELECT otp, otpAttempt, otpTiming
-            FROM warden 
+            FROM users 
             WHERE emailId = ? AND deletedAt IS NULL`,
             [emailId],
             mysqlClient
@@ -590,9 +590,9 @@ async function processResetPassword(req, res) {
             return res.status(404).send('Oops! Something went wrong. Please contact admin.')
         }
 
-        const userOtp = userDetails[0].otp;
-        const userOtpAttempt = userDetails[0].otpAttempt || 0;
-        const userOtpTiming = userDetails[0].otpTiming;
+        const userOtp = userDetails[0].otp
+        const userOtpAttempt = userDetails[0].otpAttempt || 0
+        const userOtpTiming = userDetails[0].otpTiming
 
         const blockedTime = new Date(userOtpTiming).getTime()
 
@@ -601,30 +601,28 @@ async function processResetPassword(req, res) {
         }
 
         if (userOtpAttempt >= otpAttemptMax) {
-            const updatedUser = await mysqlQuery(/*sql*/`UPDATE warden SET otp = null, otpAttempt = null, otpTiming = DATE_ADD(NOW(), INTERVAL 3 HOUR)
+            const updatedUser = await mysqlQuery(/*sql*/`UPDATE users SET otp = null, otpAttempt = null, otpTiming = DATE_ADD(NOW(), INTERVAL 3 HOUR)
             WHERE emailId = ? AND deletedAt IS NULL `, [emailId], mysqlClient)
 
             req.session.destroy(err => {
                 if (err) {
-                    return res.status(500).send('Error destroying session.');
+                    return res.status(500).send('Error destroying session.')
                 }
 
                 if (updatedUser.affectedRows === 0) {
                     return res.status(404).send('Oops! Something went wrong. Please contact admin.')
                 }
                 return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
-            });
+            })
         }
 
         if (otp === userOtp) {
             if (password.length < 6) {
-                return res.status(400).send(
-                    {errorType:'password', message:'Password must be at least 6 characters long.'}
-                )
+                return res.status(400).send('Password must be at least 6 characters long.')
             } 
             
             const hashGenerator = await hashPassword(password)
-            const resetPassword = await mysqlQuery(/*sql*/`UPDATE warden SET password = ?, otp = null,
+            const resetPassword = await mysqlQuery(/*sql*/`UPDATE users SET password = ?, otp = null,
                 otpAttempt = null WHERE emailId = ? AND deletedAt IS NULL`,
                 [hashGenerator, emailId], mysqlClient)
 
@@ -635,7 +633,7 @@ async function processResetPassword(req, res) {
             return res.status(200).send('success')
         } else {
             if (userOtpAttempt === 2) {
-                var updateBlockedTime = await mysqlQuery(/*sql*/`UPDATE warden SET otp = null, otpAttempt = null,
+                var updateBlockedTime = await mysqlQuery(/*sql*/`UPDATE users SET otp = null, otpAttempt = null,
                 otpTiming = DATE_ADD(NOW(), INTERVAL 3 HOUR) WHERE emailId = ? AND deletedAt IS NULL`,
                     [emailId], mysqlClient)
 
@@ -644,16 +642,17 @@ async function processResetPassword(req, res) {
                 }
                 return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
             } else {
-                var updateOtpAttempt = await mysqlQuery(/*sql*/`UPDATE warden SET otpAttempt = ? + 1
+                var updateOtpAttempt = await mysqlQuery(/*sql*/`UPDATE users SET otpAttempt = ? + 1
                 WHERE emailId = ? AND deletedAt IS NULL`, [userOtpAttempt, emailId], mysqlClient)
 
                 if (updateOtpAttempt.affectedRows === 0) {
                     return res.status(404).send('Oops! Something went wrong. Please contact admin.')
                 }
-                return res.status(400).send({ errorType: 'OTP', message: 'Invalid OTP.' })
+                return res.status(400).send('Invalid OTP.')
             }
         }
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).send(error.message)
     }
@@ -753,6 +752,7 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
+    app.put('/api/users/resetpassword', processResetPassword)
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)
