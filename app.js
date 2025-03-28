@@ -9,7 +9,7 @@ const session = require('express-session')
 const FileStore = require('session-file-store')(session)
 const { v4: uuidv4 } = require('uuid')
 const app = express()
-// dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
+dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
 
 //apicontroller
 const user = require('./apicontroller/users')
