@@ -1,5 +1,6 @@
 {
   "scripts": {
+    "start": "node app.js",
     "prod": "cross-env NODE_ENV=prod node app.js",
     "devtest": "cross-env NODE_ENV=dev node app.js"
   },
