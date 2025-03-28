@@ -1,4 +1,4 @@
-const bcrypt = require('bcrypt')
+const bcrypt = require('bcryptjs')
 
 function mysqlQuery(sql, options, mysqlClient) {
     return new Promise((resolve, reject) => {
