@@ -9,7 +9,6 @@ const yup = require('yup')
 const { subYears } = require('date-fns')
 const md5 = require('md5')
 
-
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
         cb(null, path.join(__dirname, '..', 'useruploads'))
@@ -49,7 +48,6 @@ const mainDetailsUserValidation = yup.object().shape({
 })
 
 const userValidation = yup.object().shape({
-
     password: yup
         .string()
         .min(6, 'Password must be at least 6 characters long')
@@ -825,8 +823,6 @@ module.exports = (app) => {
     app.post('/api/users/generateotp', generateOtp)
     app.get('/api/logout', userLogOut)
     app.put('/api/users/changepassword/:userId', changePassword)
-
-
 }
 
 

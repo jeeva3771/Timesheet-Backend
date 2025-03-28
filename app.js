@@ -12,9 +12,10 @@ const app = express()
 dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
 
 //apicontroller
-const user = require('./apicontroller/users')
+const users = require('./apicontroller/users')
+const projects = require('./apicontroller/projects')
 
-const logger = pino({
+const logger = pino({ 
     level: 'info'
 })
 
@@ -99,7 +100,8 @@ app.mysqlClient.connect(function (err){
     } else {
         console.log('mysql connected')
 
-        user(app)
+        users(app)
+        projects(app)
 
         app.listen(process.env.APP_PORT, () => {
             logger.info(`listen ${process.env.APP_PORT} port`)
