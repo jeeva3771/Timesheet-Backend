@@ -16,7 +16,9 @@ async function readProjects(req, res) {
             p.*,
             u.name AS createdName,
             u2.name AS managerName,
-            u3.name AS employeeName
+            u3.name AS employeeName,
+            DATE_FORMAT(p.startDate, "%d-%b-%Y") AS projectStart,
+            DATE_FORMAT(p.endDate, "%d-%b-%Y") AS projectEnd
         FROM projects AS p
         LEFT JOIN users AS u ON u.userId = p.createdBy
         LEFT JOIN users AS u2 ON u2.userId = p.managerId
@@ -62,6 +64,33 @@ async function readProjects(req, res) {
             projectCount: totalCount[0].totalProjectCount
         })
 
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
+
+async function readProjectById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.params.userId
+
+    try {
+        const [project] = await mysqlQuery(/*sql*/`
+            SELECT 
+                u.*,
+                ur.name AS createdName,
+                ur2.name AS updatedName,
+                DATE_FORMAT(u.dob, "%d-%b-%Y") AS birth,
+                DATE_FORMAT(u.createdAt, "%d-%b-%Y %r") AS createdTime,
+                DATE_FORMAT(u.updatedAt, "%d-%b-%Y %r") AS updatedTime
+            FROM users AS u
+            LEFT JOIN users AS ur ON ur.userId = u.createdBy
+            LEFT JOIN users AS ur2 ON ur2.userId = u.updatedBy
+            WHERE 
+                u.deletedAt IS NULL AND u.userId = ?`, 
+            [userId], mysqlClient)
+            
+        res.status(200).send(project)
     } catch (error) {
         req.log.error(error)
         res.status(500).send(error)
