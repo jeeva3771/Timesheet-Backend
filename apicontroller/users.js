@@ -780,6 +780,7 @@ async function validateMainPayload(body, isUpdate = false, userId = null, mysqlC
         if (validateEmailId.count > 0) {
             errors.push('Email already exists')
         }
+        return errors
     } catch (error) {
         console.log(error)
         return ['Something went wrong. Please try again later']
