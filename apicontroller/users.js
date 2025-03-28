@@ -1,4 +1,4 @@
-const { mysqlQuery, deleteFile,hashPassword, isPasswordValid } = require('../utilityclient/query')
+const { mysqlQuery, deleteFile, hashPassword, isPasswordValid } = require('../utilityclient/query')
 const otpGenerator = require('otp-generator')
 const sendEmail = require('../utilityclient/email')
 const multer = require('multer')
@@ -85,9 +85,11 @@ async function authentication(req, res) {
 
     try {
         const [user] = await mysqlQuery(/*sql*/`
-            SELECT * FROM users 
-            WHERE emailId = ? AND 
-                deletedAt IS NULL`,
+            SELECT u.*,
+                DATE_FORMAT(u.dob, "%d-%b-%Y") AS birth 
+            FROM users AS u
+            WHERE u.emailId = ? AND 
+                u.deletedAt IS NULL`,
             [emailId]
         , mysqlClient)
 
@@ -114,7 +116,15 @@ async function authentication(req, res) {
     }
 }
 
-async function readUsers(req, res) {
+function userLogOut(req, res) {
+    req.session.destroy((err) => {
+        if (err) logger.error()
+        // res.redirect('/login')
+        return res.status(200).send('Logout successfully')
+    })
+}
+
+async function readUsers(req, res) {    
     const mysqlClient = req.app.mysqlClient
     const limit = req.query.limit ? parseInt(req.query.limit) : null
     const page = req.query.page ? parseInt(req.query.page) : null
@@ -185,7 +195,8 @@ async function readUserById(req, res) {
             SELECT 
                 u.*,
                 ur.name AS createdName,
-                DATE_FORMAT(u.dob, "%d-%b-%Y %r") AS birth,
+                ur2.name AS updatedName,
+                DATE_FORMAT(u.dob, "%d-%b-%Y") AS birth,
                 DATE_FORMAT(u.createdAt, "%d-%b-%Y %r") AS createdTime,
                 DATE_FORMAT(u.updatedAt, "%d-%b-%Y %r") AS updatedTime
             FROM users AS u
@@ -194,7 +205,7 @@ async function readUserById(req, res) {
             WHERE 
                 u.deletedAt IS NULL AND u.userId = ?`, 
             [userId], mysqlClient)
-    
+            
         res.status(200).send(user)
     } catch (error) {
         req.log.error(error)
@@ -517,6 +528,58 @@ async function deleteUserAvatar(req, res) {
     }
 }
 
+async function changePassword(req, res) {
+    console.log('200')
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.params.userId
+    const updatedBy = req.session.user.userId
+    const {
+        oldPassword,
+        newPassword
+    } = req.body
+
+    try {
+        const getExistsPassword = await mysqlQuery(/*sql*/`
+            SELECT password FROM users 
+            WHERE userId = ? AND 
+                deletedAt IS NULL`,
+            [userId], mysqlClient)
+        
+        if (getExistsPassword.length > 0) {
+            const validatePassword = await isPasswordValid(oldPassword, getExistsPassword[0].password)
+            if (validatePassword === false) {
+                return res.status(400).send("Current password Invalid.")
+            }
+        } else {
+            return res.status(404).send('User is Invalid.')
+        }
+
+        if (newPassword.length < 6) {
+            return res.status(400).send('New password is Invalid.')
+        } 
+
+        const newHashGenerator = await hashPassword(newPassword)
+
+        const updatePassword = await mysqlQuery(/*sql*/`
+            UPDATE users SET 
+                password = ?,
+                updatedBy = ?
+            WHERE userId = ? AND 
+                deletedAt IS NULL`,
+            [newHashGenerator, updatedBy, userId],
+        mysqlClient)
+
+        if (updatePassword.affectedRows === 0) {
+            return res.status(204).send("No changes made")
+        }
+
+        res.status(200).send('Changed password successfully')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
+
 async function generateOtp(req, res) {
     const mysqlClient = req.app.mysqlClient
     const currentTime = new Date().getTime()
@@ -568,7 +631,6 @@ async function generateOtp(req, res) {
         res.status(500).send(error)
     }
 }
-
 
 async function processResetPassword(req, res) {
     const mysqlClient = req.app.mysqlClient
@@ -652,12 +714,10 @@ async function processResetPassword(req, res) {
             }
         }
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).send(error.message)
     }
 }
-
 
 async function validatePayload(fileValidationError, body, isUpdate = false, userId = null, mysqlClient) {
     const errors = []
@@ -762,6 +822,9 @@ module.exports = (app) => {
     app.delete('/api/users/:userId/deleteavatar', deleteUserAvatar)
     app.put('/api/users/:userId/editavatar', multerMiddleware, updateUserAvatar)
     app.post('/api/users/generateotp', generateOtp)
+    app.get('/api/logout', userLogOut)
+    app.put('/api/users/changepassword/:userId', changePassword)
+
 
 }
 

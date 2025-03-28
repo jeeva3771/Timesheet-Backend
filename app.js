@@ -72,6 +72,27 @@ app.mysqlClient = mysql.createConnection({
     database: process.env.DB_NAME
 })    
 
+const pageUsersSessionExclude = [
+    '/login/',
+    '/api/login/',
+    '/users/resetpassword/',
+    '/api/users/generateotp/',
+    '/api/users/resetpassword/'
+]
+
+app.use((req, res, next) => {
+    if (pageUsersSessionExclude.includes(req.originalUrl)) {
+        return next()
+    }
+    
+    if (req.originalUrl !== '/login/') {
+        if (req.session.isLogged !== true) {
+            return res.status(401).send('Session expired.')
+        }
+    }
+    return next()
+})
+
 app.mysqlClient.connect(function (err){
     if (err) {
         console.log(err)
