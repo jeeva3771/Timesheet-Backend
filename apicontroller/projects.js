@@ -254,6 +254,50 @@ async function editproject(req, res) {
     }
 }
 
+async function deleteProjectById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const projectId = req.params.projectId
+    const deletedBy = req.session.user.userId
+
+    if (!['admin', 'manager'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).send('User does not have permission to delete project')
+    }
+
+    try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (!userIsValid) {
+            return res.status(404).send('User is not found')
+        }
+
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+
+        const deletedUser = await mysqlQuery(/*sql*/`
+            UPDATE users SET 
+                emailId = CONCAT(IFNULL(emailId, ''), '-', NOW()), 
+                deletedAt = NOW(), 
+                deletedBy = ?
+            WHERE userId = ? 
+            AND deletedAt IS NULL`,
+            [deletedBy, userId]
+        , mysqlClient)
+
+        if (deletedUser.affectedRows === 0) {
+            return res.status(404).send('No change made')
+        }
+
+        if (oldFilePath) {
+            const rootDir = path.resolve(__dirname, '../')
+            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
+            await deleteFile(imagePath, fs)
+        }
+        res.status(200).send('Deleted successfully')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
+
+
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
     const projectName = body.projectName
