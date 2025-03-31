@@ -67,7 +67,6 @@ CREATE TABLE `projects` (
   `projectName` varchar(255) NOT NULL,
   `managerId` int(11) DEFAULT NULL,
   `clientName` varchar(255) NOT NULL,
-  `employeeId` int(11) DEFAULT NULL,
   `startDate` date DEFAULT NULL,
   `endDate` date DEFAULT NULL,
   `status` enum('onGoing','completed','onHold','notStarted') DEFAULT NULL,
@@ -80,13 +79,11 @@ CREATE TABLE `projects` (
   PRIMARY KEY (`projectId`),
   UNIQUE KEY `unq_projects_projectName` (`projectName`),
   KEY `fk_projects_managerId` (`managerId`),
-  KEY `fk_projects_employeeId` (`employeeId`),
   KEY `fk_projects_createdBy` (`createdBy`),
   KEY `fk_projects_updatedBy` (`updatedBy`),
   KEY `fk_projects_deletedBy` (`deletedBy`),
   CONSTRAINT `fk_projects_createdBy` FOREIGN KEY (`createdBy`) REFERENCES `users` (`userId`),
   CONSTRAINT `fk_projects_deletedBy` FOREIGN KEY (`deletedBy`) REFERENCES `users` (`userId`),
-  CONSTRAINT `fk_projects_employeeId` FOREIGN KEY (`employeeId`) REFERENCES `users` (`userId`),
   CONSTRAINT `fk_projects_managerId` FOREIGN KEY (`managerId`) REFERENCES `users` (`userId`),
   CONSTRAINT `fk_projects_updatedBy` FOREIGN KEY (`updatedBy`) REFERENCES `users` (`userId`)
 ) ENGINE=InnoDB AUTO_INCREMENT=3 DEFAULT CHARSET=utf8mb4 COLLATE=utf8mb4_general_ci;

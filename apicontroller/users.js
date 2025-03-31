@@ -224,6 +224,10 @@ async function createUser(req, res) {
     } = req.body    
     const createdBy = req.session.user.userId
 
+    if (!['admin'].includes(req.session.user.role)) {
+        return res.status(409).send('User does not have permission to create')
+    }
+
     try {
         const validationErrors = await validatePayload(req.fileValidationError, req.body, false, null, mysqlClient)
         if (validationErrors.length > 0) {
@@ -301,6 +305,10 @@ async function editUser(req, res) {
     const values = []
     const updates = []
 
+    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).send('User does not have permission to edit')
+    }
+
     ALLOWED_UPDATE_KEYS.forEach((key) => {
         keyValue = req.body[key]
         if (keyValue !== undefined) {
@@ -318,7 +326,7 @@ async function editUser(req, res) {
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
-        if (userIsValid.count === 0) {
+        if (!userIsValid) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
@@ -397,9 +405,13 @@ async function deleteUserById(req, res) {
     const userId = req.params.userId
     const deletedBy = req.session.user.userId
 
+    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).send('User does not have permission to delete')
+    }
+
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
-        if (userIsValid.count === 0) {
+        if (!userIsValid) {
             return res.status(404).send('User is not found')
         }
 
@@ -435,6 +447,10 @@ async function updateUserAvatar(req, res) {
     let uploadedFilePath
     const userId = req.params.userId
     const mysqlClient = req.app.mysqlClient
+
+    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).send('User does not have permission to edit')
+    }
 
     if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
         return res.status(409).send('User is not valid to edit')
@@ -490,13 +506,13 @@ async function deleteUserAvatar(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
 
-    if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
-        return res.status(409).send('User is not valid to delete image')
+    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).send('User does not have permission to delete image')
     }
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
-        if (userIsValid.count === 0) {
+        if (!userIsValid) {
             return res.status(404).send('User is not found to delete image')
         }
 
@@ -527,7 +543,6 @@ async function deleteUserAvatar(req, res) {
 }
 
 async function changePassword(req, res) {
-    console.log('200')
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
     const updatedBy = req.session.user.userId
@@ -772,14 +787,12 @@ async function validateMainPayload(body, isUpdate = false, userId = null, mysqlC
             params = [emailId]
         }
 
-
         const [validateEmailId] = await mysqlQuery(query, params, mysqlClient)
 
         if (validateEmailId.count > 0) {
             errors.push('Email already exists')
         }
     } catch (error) {
-        console.log(error)
         return ['Something went wrong. Please try again later']
     }
     return errors
@@ -794,10 +807,7 @@ async function validateUserById(userId, mysqlClient) {
             deletedAt IS NULL`, 
     [userId], mysqlClient)
    
-    if (userIsValid.count === 0) {
-        return userIsValid
-    }
-    return []
+    return userIsValid.count > 0
 }
 
 async function readUserImage(userId, mysqlClient) {
