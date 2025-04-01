@@ -142,6 +142,22 @@ async function readProjectById(req, res) {
     }
 }
 
+async function readProjectNames(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const projectNames = await mysqlQuery(/*sql*/`
+            SELECT projectName FROM projects
+            WHERE deletedAt IS NULL
+            ORDER BY projectName ASC`,
+            [], mysqlClient)
+
+        return res.status(200).send(projectNames)
+    } catch (error) {
+        req.log.error(error)    
+        res.status(500).send(error)
+    }
+}
+
 async function createProject(req, res) {
     const mysqlClient = req.app.mysqlClient
     const {
@@ -195,10 +211,29 @@ async function createProject(req, res) {
                 }
                 return res.status(400).send('Assigned employees are not inserted')
             }
+
+            const employeeNamesResult = await mysqlQuery(/*sql*/`
+                SELECT GROUP_CONCAT(name SEPARATOR ', ') AS employeeNames
+                FROM users
+                WHERE userId IN (?)`, 
+                [assignedEmployees], mysqlClient)
+            const employeeNames = employeeNamesResult[0]?.employeeNames || 'No employees assigned'
+        
+            const action = 'created'
+            
+            const changes = `A new project '${projectName}' was created and member(s) assigned ${employeeNames}`
+            const historyEntry = await mysqlQuery(/*sql*/`
+                INSERT INTO projectHistorys 
+                    (projectId, action, changes, createdBy) 
+                VALUES (?, ?, ?, ?)`,
+                [projectId, action, changes, createdBy], mysqlClient)
+        
+            if (historyEntry.affectedRows === 0) {
+                return res.status(400).send('Failed to insert history record')
+            }
         }
         res.status(201).send('Successfully created.')
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).send(error)
     }
@@ -208,8 +243,10 @@ async function editproject(req, res) {
     const projectId = req.params.projectId
     const mysqlClient = req.app.mysqlClient
     const updatedBy = req.session.user.userId
+    let employeeIds = req.body.employeeIds
     const values = []
     const updates = []
+    let changes = []
 
     if (!['admin', 'manager'].includes(req.session.user.role)) {
         return res.status(409).send('User does not have permission to edit a project')
@@ -221,31 +258,108 @@ async function editproject(req, res) {
             values.push(keyValue)
             updates.push(` ${key} = ?`)
         }
-    })
+    });
 
     updates.push('updatedBy = ?')
     values.push(updatedBy, projectId)
 
     try {
-        const projectIsValid = await validateProjectById(projectId, mysqlClient)
-        if (!projectIsValid) {
-            return res.status(404).send('Project name is not found')
+        const project = await mysqlQuery(/*sql*/`
+            SELECT * FROM projects 
+            WHERE projectId = ? AND 
+                deletedAt IS NULL`,
+            [projectId], mysqlClient)
+
+        if (!project || project.length === 0) {
+            return res.status(404).send('Project not found')
         }
 
-        const validUpdate = await validatePayload(req.body, true, projectId, mysqlClient)
-        if (validUpdate.length > 0) {
-            return res.status(400).send(validUpdate)
+        const originalProject = project[0]
+
+        ALLOWED_UPDATE_KEYS.forEach((key, index) => {
+            const newValue = req.body[key]
+            const oldValue = originalProject[key]
+            if (newValue !== oldValue) {
+                if (key === 'startDate' || key === 'endDate') {
+                    const formattedOldValue = new Date(oldValue).toISOString().split('T')[0]
+                    const formattedNewValue = new Date(newValue).toISOString().split('T')[0]
+                    changes.push(`${key} changed from '${formattedOldValue}' to '${formattedNewValue}'`)
+                } else {
+                    changes.push(`${key} changed from '${oldValue}' to '${newValue}'`)
+                }
+            }
+        })
+
+        const existingEmployees = await mysqlQuery(/*sql*/`
+            SELECT employeeId FROM projectEmployees 
+            WHERE projectId = ? AND 
+                deletedAt IS NULL`,
+            [projectId], mysqlClient)
+
+        const existingEmployeeIds = existingEmployees?.map(emp => emp.employeeId)
+
+        const employeesToInsert = employeeIds?.filter(id => !existingEmployeeIds.includes(id))
+        const employeesToRemove = existingEmployeeIds?.filter(id => !employeeIds.includes(id))
+
+        if (employeesToInsert.length > 0) {
+            const employeeNamesToAdd = await mysqlQuery(/*sql*/`
+                SELECT userId, name FROM users 
+                WHERE userId IN (?)`,
+                [employeesToInsert], mysqlClient)
+
+            const employeeNamesToAddString = employeeNamesToAdd.map(emp => emp.name).join(', ')
+            changes.push(`Member(s) added: ${employeeNamesToAddString}`)
+        }
+
+        if (employeesToRemove.length > 0) {
+            const employeeNamesToRemove = await mysqlQuery(/*sql*/`
+                SELECT userId, name FROM users 
+                WHERE userId IN (?)`,
+                [employeesToRemove], mysqlClient)
+
+            const employeeNamesToRemoveString = employeeNamesToRemove.map(emp => emp.name).join(', ')
+            changes.push(`Member(s) removed: ${employeeNamesToRemoveString}`)
         }
 
         const updateUser = await mysqlQuery(/*sql*/`
-            UPDATE 
-                projects SET ${updates.join(', ')} 
+            UPDATE projects SET ${updates.join(', ')} 
             WHERE projectId = ? AND 
                 deletedAt IS NULL`,
             values, mysqlClient)
 
         if (updateUser.affectedRows === 0) {
             return res.status(204).send('No changes made')
+        }
+
+        if (employeesToInsert.length > 0) {
+            const insertValues = employeesToInsert.map(id => [projectId, id])
+            await mysqlQuery(/*sql*/`
+                INSERT INTO projectEmployees (projectId, employeeId) VALUES ?`,
+                [insertValues], mysqlClient)
+        }
+
+        if (employeesToRemove.length > 0) {
+            await mysqlQuery(/*sql*/`
+                UPDATE projectEmployees SET 
+                    deletedAt = NOW() 
+                WHERE projectId = ? AND 
+                    employeeId IN (?)`,
+                [projectId, employeesToRemove], mysqlClient)
+        }
+
+        if (changes.length > 0) {
+            const action = 'edited'
+            const changesText = changes.join(', ')
+
+            const historyEntry = await mysqlQuery(/*sql*/`
+                INSERT INTO projectHistorys 
+                    (projectId, action, changes, createdBy, updatedBy) 
+                VALUES (?, ?, ?, ?, ?)`,
+                [projectId, action, changesText, updatedBy, updatedBy], mysqlClient)
+
+            if (historyEntry.affectedRows === 0) {
+                return res.status(400).send('Failed to insert history record')
+            }
         }
         res.status(200).send('Successfully updated.')
     } catch (error) {
@@ -259,36 +373,63 @@ async function deleteProjectById(req, res) {
     const projectId = req.params.projectId
     const deletedBy = req.session.user.userId
 
-    if (!['admin', 'manager'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+    if (!['admin', 'manager'].includes(req.session.user.role)) {
         return res.status(409).send('User does not have permission to delete project')
     }
 
     try {
-        const userIsValid = await validateUserById(userId, mysqlClient)
-        if (!userIsValid) {
-            return res.status(404).send('User is not found')
+        const projectIsValid = await validateProjectById(projectId, mysqlClient)
+        if (!projectIsValid) {
+            return res.status(404).send('Project is not found')
         }
 
-        const oldFilePath = await readUserImage(userId, mysqlClient)
+        const [project] = await mysqlQuery(/*sql*/`
+            SELECT projectName FROM projects 
+            WHERE projectId = ? AND 
+                deletedAt IS NULL`,
+            [projectId], mysqlClient)
 
-        const deletedUser = await mysqlQuery(/*sql*/`
-            UPDATE users SET 
-                emailId = CONCAT(IFNULL(emailId, ''), '-', NOW()), 
+        if (!project) {
+            return res.status(404).send('Project not found')
+        }
+
+        const deletedProject = await mysqlQuery(/*sql*/`
+            UPDATE projects SET 
+                projectName = CONCAT(IFNULL(projectName, ''), '-', NOW()), 
                 deletedAt = NOW(), 
                 deletedBy = ?
-            WHERE userId = ? 
+            WHERE projectId = ? 
             AND deletedAt IS NULL`,
-            [deletedBy, userId]
+            [deletedBy, projectId]
         , mysqlClient)
 
-        if (deletedUser.affectedRows === 0) {
+        if (deletedProject.affectedRows === 0) {
             return res.status(404).send('No change made')
         }
 
-        if (oldFilePath) {
-            const rootDir = path.resolve(__dirname, '../')
-            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
-            await deleteFile(imagePath, fs)
+        const deleteProjectEmployee = await mysqlQuery(/*sql*/`
+            UPDATE projectEmployees SET 
+                deletedAt = NOW(), 
+                deletedBy = ?
+            WHERE projectId = ? 
+            AND deletedAt IS NULL`,
+            [deletedBy, projectId]
+        , mysqlClient)
+
+        if (deleteProjectEmployee.affectedRows === 0) {
+            return res.status(404).send('Project is deleted but not removed employee(s)')
+        }
+
+        const action = 'deleted'
+        const changes = `The project '${project.projectName}' has been deleted`
+        
+        const historyEntry = await mysqlQuery(/*sql*/`
+            INSERT INTO projectHistorys (projectId, action, changes, createdBy, deletedAt, deletedBy) 
+            VALUES (?, ?, ?, ?, NOW(), ?)`,
+            [projectId, action, changes, deletedBy, deletedBy], mysqlClient)
+
+        if (historyEntry.affectedRows === 0) {
+            return res.status(400).send('Failed to insert history record')
         }
         res.status(200).send('Deleted successfully')
     } catch (error) {
@@ -297,6 +438,31 @@ async function deleteProjectById(req, res) {
     }
 }
 
+async function readProjectHistorys(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const projectHistory = await mysqlQuery(/*sql*/`
+            SELECT 
+                h.*,
+                p.projectName AS projectName, 
+                ur.name AS createdName,
+                h.action AS action,
+                DATE_FORMAT(h.createdAt, "%d-%b-%Y") AS createdDate,
+                DATE_FORMAT(h.createdAt, "%r") AS createdTime,
+                CONCAT(h.changes, ' by ', ur.name) AS changesWithCreator
+            FROM projectHistorys AS h
+            LEFT JOIN projects AS p ON p.projectId = h.projectId
+            LEFT JOIN users AS ur ON ur.userId = h.createdBy
+            WHERE h.deletedAt IS NULL 
+            ORDER BY h.createdAt ASC`,
+            [], mysqlClient)
+
+        res.status(200).send(projectHistory)
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).send(error)
+    }
+}
 
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
@@ -354,11 +520,12 @@ async function validateProjectById(projectId, mysqlClient) {
 
 
 module.exports = (app) => {
+    app.get('/api/projects/history', readProjectHistorys)
+    app.get('/api/projects/name', readProjectNames)
     app.get('/api/projects', readProjects)
     app.get('/api/projects/:projectId', readProjectById)
     app.post('/api/projects', createProject)
     app.put('/api/projects/:projectId', editproject)
-    // app.delete('/api/users/:userId', deleteUserById)
-    // app.delete('/api/users/deleteavatar/:userId', deleteUserAvatar)
-    
+    app.delete('/api/projects/:projectId', deleteProjectById)
+
 }

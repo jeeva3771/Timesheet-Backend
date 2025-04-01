@@ -211,6 +211,42 @@ async function readUserById(req, res) {
     }
 }
 
+async function readNameAndRoleAllManagerAndAdmin(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const managerAndAdmin = await mysqlQuery(/*sql*/`
+            SELECT name, role FROM users
+            WHERE deletedAt IS NULL AND
+                status = 1 AND 
+                (role = 'admin' OR role = 'manager') 
+            ORDER BY name ASC`,
+            [], mysqlClient)
+
+        return res.status(200).send(managerAndAdmin)
+    } catch (error) {
+        req.log.error(error)    
+        res.status(500).send(error)
+    }
+}
+
+async function readNameAndRoleAllHrAndEmployee(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const hrAndEmployee = await mysqlQuery(/*sql*/`
+            SELECT name, role FROM users
+            WHERE deletedAt IS NULL AND
+                status = 1 AND 
+                (role = 'hr' OR role = 'employee') 
+            ORDER BY name ASC`,
+            [], mysqlClient)
+
+        return res.status(200).send(hrAndEmployee)
+    } catch (error) {
+        req.log.error(error)    
+        res.status(500).send(error)
+    }
+}
+
 async function createUser(req, res) {
     const mysqlClient = req.app.mysqlClient
     let uploadedFilePath
@@ -822,6 +858,8 @@ async function readUserImage(userId, mysqlClient) {
 
 module.exports = (app) => {
     app.put('/api/users/resetpassword', processResetPassword)
+    app.get('/api/users/managerandadmin', readNameAndRoleAllManagerAndAdmin)
+    app.get('/api/users/hrandemployee', readNameAndRoleAllHrAndEmployee)
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)

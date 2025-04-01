@@ -14,6 +14,7 @@ dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
 //apicontroller
 const users = require('./apicontroller/users')
 const projects = require('./apicontroller/projects')
+const timeSheet = require('./apicontroller/timesheet')
 
 const logger = pino({ 
     level: 'info'
@@ -102,6 +103,7 @@ app.mysqlClient.connect(function (err){
 
         users(app)
         projects(app)
+        timeSheet(app)
 
         app.listen(process.env.APP_PORT, () => {
             logger.info(`listen ${process.env.APP_PORT} port`)
