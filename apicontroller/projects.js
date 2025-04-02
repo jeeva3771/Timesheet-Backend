@@ -158,6 +158,23 @@ async function readProjectNames(req, res) {
     }
 }
 
+
+async function readActiveProjectNames(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const projectNames = await mysqlQuery(/*sql*/`
+            SELECT projectName FROM projects
+            WHERE deletedAt IS NULL
+            ORDER BY projectName ASC`,
+            [], mysqlClient)
+
+        return res.status(200).send(projectNames)
+    } catch (error) {
+        req.log.error(error)    
+        res.status(500).send(error)
+    }
+}
+
 async function createProject(req, res) {
     const mysqlClient = req.app.mysqlClient
     const {
@@ -527,5 +544,4 @@ module.exports = (app) => {
     app.post('/api/projects', createProject)
     app.put('/api/projects/:projectId', editproject)
     app.delete('/api/projects/:projectId', deleteProjectById)
-
 }

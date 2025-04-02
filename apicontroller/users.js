@@ -211,36 +211,25 @@ async function readUserById(req, res) {
     }
 }
 
-async function readNameAndRoleAllManagerAndAdmin(req, res) {
+async function readUsersNameAndRole(req, res) {
     const mysqlClient = req.app.mysqlClient
+    const adminAndManager = req.query.adminAndManager === 'true'
     try {
-        const managerAndAdmin = await mysqlQuery(/*sql*/`
+        let userDetails = /*sql*/`
             SELECT name, role FROM users
             WHERE deletedAt IS NULL AND
-                status = 1 AND 
-                (role = 'admin' OR role = 'manager') 
-            ORDER BY name ASC`,
-            [], mysqlClient)
+                status = 1 AND `
 
-        return res.status(200).send(managerAndAdmin)
-    } catch (error) {
-        req.log.error(error)    
-        res.status(500).send(error)
-    }
-}
+        if (adminAndManager) {
+            userDetails += `(role = 'admin' OR role = 'manager') 
+            ORDER BY name ASC`
+        } else {
+            userDetails += `(role = 'hr' OR role = 'employee') 
+            ORDER BY name ASC`
+        }
 
-async function readNameAndRoleAllHrAndEmployee(req, res) {
-    const mysqlClient = req.app.mysqlClient
-    try {
-        const hrAndEmployee = await mysqlQuery(/*sql*/`
-            SELECT name, role FROM users
-            WHERE deletedAt IS NULL AND
-                status = 1 AND 
-                (role = 'hr' OR role = 'employee') 
-            ORDER BY name ASC`,
-            [], mysqlClient)
-
-        return res.status(200).send(hrAndEmployee)
+        const nameAndRole = await mysqlQuery(userDetails, [], mysqlClient)
+        return res.status(200).send(nameAndRole)
     } catch (error) {
         req.log.error(error)    
         res.status(500).send(error)
@@ -858,8 +847,7 @@ async function readUserImage(userId, mysqlClient) {
 
 module.exports = (app) => {
     app.put('/api/users/resetpassword', processResetPassword)
-    app.get('/api/users/managerandadmin', readNameAndRoleAllManagerAndAdmin)
-    app.get('/api/users/hrandemployee', readNameAndRoleAllHrAndEmployee)
+    app.get('/api/users/nameandrole', readUsersNameAndRole)
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)
