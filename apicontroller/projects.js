@@ -63,21 +63,16 @@ async function readProjects(req, res) {
         GROUP BY p.projectId
         ORDER BY ${orderBy} ${sort}`
         
-        let countQuery = /*sql*/`
-            SELECT COUNT(*) AS totalProjectCount
-            FROM (
-                SELECT p.projectId
-                FROM projects AS p
-                LEFT JOIN users AS u ON u.userId = p.createdBy
-                LEFT JOIN users AS u2 ON u2.userId = p.managerId
-                LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
-                LEFT JOIN users AS ue ON ue.userId = pe.employeeId        
-                WHERE 
-                    p.deletedAt IS NULL AND 
-                    (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ?)
-                GROUP BY p.projectId
-                LIMIT ? OFFSET ?
-            ) AS limitedProjects`
+    let countQuery = /*sql*/`
+        SELECT COUNT(DISTINCT p.projectId) AS totalProjectCount
+        FROM projects AS p
+        LEFT JOIN users AS u ON u.userId = p.createdBy
+        LEFT JOIN users AS u2 ON u2.userId = p.managerId
+        LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
+        LEFT JOIN users AS ue ON ue.userId = pe.employeeId        
+        WHERE 
+            p.deletedAt IS NULL AND 
+            (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ?)`
 
     if (limit >= 0) {
         projectsQuery += ' LIMIT ? OFFSET ?'
@@ -144,31 +139,19 @@ async function readProjectById(req, res) {
 
 async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient
+    const inProgress = req.query.inProgress === 'true'
     try {
-        const projectNames = await mysqlQuery(/*sql*/`
+        let projectNamesQuery  = /*sql*/`
             SELECT projectName FROM projects
-            WHERE deletedAt IS NULL
-            ORDER BY projectName ASC`,
-            [], mysqlClient)
+            WHERE deletedAt IS NULL`
 
-        return res.status(200).send(projectNames)
-    } catch (error) {
-        req.log.error(error)    
-        res.status(500).send(error)
-    }
-}
+        if (inProgress) {
+            projectNamesQuery += ` AND status = 'onGoing'`
+        } 
+        projectNamesQuery += ` ORDER BY projectName ASC`
 
-
-async function readActiveProjectNames(req, res) {
-    const mysqlClient = req.app.mysqlClient
-    try {
-        const projectNames = await mysqlQuery(/*sql*/`
-            SELECT projectName FROM projects
-            WHERE deletedAt IS NULL
-            ORDER BY projectName ASC`,
-            [], mysqlClient)
-
-        return res.status(200).send(projectNames)
+        const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
+        return res.status(200).send(projectNamesResult)
     } catch (error) {
         req.log.error(error)    
         res.status(500).send(error)

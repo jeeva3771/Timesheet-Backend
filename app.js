@@ -9,9 +9,10 @@ const session = require('express-session')
 const FileStore = require('session-file-store')(session)
 const { v4: uuidv4 } = require('uuid')
 const app = express()
-dotenv.config({ path: `env/${process.env.NODE_ENV}.env` });
+dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
 
 //apicontroller
+const dashBoard = require('./apicontroller/dasboard')
 const users = require('./apicontroller/users')
 const projects = require('./apicontroller/projects')
 const timeSheet = require('./apicontroller/timesheet')
@@ -49,8 +50,8 @@ app.use(
         customLogLevel: (res, err) => (res.statusCode >= 500 ? 'error' : 'info'),
         customSuccessMessage: (req, res) => `Request to ${req.url} processed`,
         genReqId: (req) => {
-            req.startTime = Date.now();
-            return req.id || uuidv4();
+            req.startTime = Date.now()
+            return req.id || uuidv4()
         },
         customAttributeKeys: {
             reqId: 'requestId',
@@ -104,6 +105,7 @@ app.mysqlClient.connect(function (err){
         users(app)
         projects(app)
         timeSheet(app)
+        dashBoard(app)
 
         app.listen(process.env.APP_PORT, () => {
             logger.info(`listen ${process.env.APP_PORT} port`)

@@ -210,7 +210,6 @@ async function readUserById(req, res) {
         res.status(500).send(error)
     }
 }
-
 async function readUsersNameAndRole(req, res) {
     const mysqlClient = req.app.mysqlClient
     const adminAndManager = req.query.adminAndManager === 'true'
@@ -218,15 +217,14 @@ async function readUsersNameAndRole(req, res) {
         let userDetails = /*sql*/`
             SELECT name, role FROM users
             WHERE deletedAt IS NULL AND
-                status = 1 AND `
+                status = 1 AND`
 
         if (adminAndManager) {
-            userDetails += `(role = 'admin' OR role = 'manager') 
-            ORDER BY name ASC`
+            userDetails += " (role = 'admin' OR role = 'manager')"
         } else {
-            userDetails += `(role = 'hr' OR role = 'employee') 
-            ORDER BY name ASC`
+            userDetails += " (role = 'hr' OR role = 'employee')"
         }
+        userDetails += " ORDER BY name ASC"
 
         const nameAndRole = await mysqlQuery(userDetails, [], mysqlClient)
         return res.status(200).send(nameAndRole)
@@ -238,7 +236,6 @@ async function readUsersNameAndRole(req, res) {
 
 async function createUser(req, res) {
     const mysqlClient = req.app.mysqlClient
-    let uploadedFilePath
     const {
         name, 
         dob, 
@@ -248,23 +245,25 @@ async function createUser(req, res) {
         status
     } = req.body    
     const createdBy = req.session.user.userId
+    let uploadedFilePath = req.file?.path || null
 
     if (!['admin'].includes(req.session.user.role)) {
+        if (uploadedFilePath) {
+            await deleteFile(uploadedFilePath, fs)
+        }
         return res.status(409).send('User does not have permission to create')
     }
 
     try {
         const validationErrors = await validatePayload(req.fileValidationError, req.body, false, null, mysqlClient)
         if (validationErrors.length > 0) {
-            if (req.file !== undefined) {
-                uploadedFilePath = req.file.path
+            if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
             return res.status(400).send(validationErrors)
         }
 
-        if (req.file !== undefined){
-            uploadedFilePath = req.file.path
+        if (uploadedFilePath){
             await sharp(fs.readFileSync(uploadedFilePath))
                 .resize({
                     width: parseInt(process.env.IMAGE_WIDTH),

@@ -1,4 +1,73 @@
-const { mysqlQuery } = require('../utilityclient/query')
+const { mysqlQuery, deleteFile } = require('../utilityclient/query')
+const multer = require('multer')
+const fs = require('fs')
+const path = require('path')
+const sharp = require('sharp')
+const yup = require('yup')
+const storage = multer.diskStorage({
+    destination: function (req, file, cb) {
+        cb(null, path.join(__dirname, '..', 'reportdocuploads'))
+    },
+    filename: function (req, file, cb) {
+        const userId = req.params.userId
+        const fileExtension = path.extname(file.originalname)
+        cb(null, `${userId}_${Date.now()}${fileExtension}`)
+    }
+})
+
+const fileFilter = (req, file, cb) => {
+    const allowedMimeTypes = [
+        'image/jpeg', 
+        'image/png', 
+        'image/jpg',
+        'application/vnd.ms-excel', 
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+    ]
+
+    if (allowedMimeTypes.includes(file.mimetype)) {
+        cb(null, true)
+    } else {
+        req.fileValidationError = 'Invalid file type. Only JPEG, PNG, JPG, and Excel (XLS/XLSX) files are allowed.'
+        cb(null, false)
+    }
+}
+
+const upload = multer({ storage, fileFilter })
+const multerMiddleware = upload.single('documentImage')
+
+const timesheetValidation = yup.object().shape({
+    projectId: yup.number()
+        .integer('Project ID must be a number')
+        .positive('Project ID must be positive')
+        .required('Project ID is required'),
+
+    task: yup.string()
+        .min(3, 'Task must be at least 3 characters long')
+        .required('Task is required'),
+
+    hoursWorked: yup.number()
+        .min(0.25, 'Hours worked must be at least 0.25')
+        .max(12, 'Hours worked cannot exceed 12')
+        .test(
+            'is-quarter-hour', 
+            'Hours worked must be in increments of 0.25 (e.g., 0.25, 0.50, 0.75, 1, 1.25, etc.)', 
+            value => value % 0.25 === 0
+        )
+        .required('Hours worked is required'),
+
+    workDate: yup.date()
+        .typeError('Work date must be a valid date')
+        .test(
+            'is-today', 
+            'Work date must be today', 
+            value => {
+                const today = new Date().setHours(0, 0, 0, 0)
+                const inputDate = new Date(value).setHours(0, 0, 0, 0)
+                return today === inputDate
+            }
+        )
+        .required('Work date is required')
+})
 
 async function readTimesheets(req, res) {  
     const mysqlClient = req.app.mysqlClient
@@ -33,7 +102,7 @@ async function readTimesheets(req, res) {
         queryParameters.push(fromDate)
     } else if (toDate) {
         whereConditions.push(`t.workDate <= ?`)
-        queryParameters.push(toDate);
+        queryParameters.push(toDate)
     }
 
     let whereClause = `WHERE ` + whereConditions.join(' AND ')
@@ -104,13 +173,94 @@ async function readTimesheets(req, res) {
     }
 }
 
+async function createTimesheet(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const { 
+        projectId, 
+        task, 
+        hoursWorked, 
+        workDate 
+    } = req.body   
+    const userId = req.session.user.userId;
+    const uploadedFilePath = req.file?.path || null
+
+    if (!['hr', 'employee'].includes(req.session.user.role)) {
+        if (uploadedFilePath) {
+            await deleteFile(uploadedFilePath, fs)
+        }
+        return res.status(409).send('User does not have permission to post report')
+    }
+    let errors = []
+
+    try {
+        await timesheetValidation.validate(req.body, { abortEarly: false })
+    } catch (validationError) {
+        errors = errors.concat(validationError.errors)
+    }
+
+    if (req.fileValidationError) {
+        errors.push(req.fileValidationError)
+    }
+
+    if (req.file && req.file.size > 5 * 1024 * 1024) {
+        errors.push('File size must be 5MB or less.')
+    }
+
+    if (errors.length > 0) {
+        if (uploadedFilePath) {
+            await deleteFile(uploadedFilePath, fs)
+        }
+        return res.status(400).send(errors)
+    }
+
+    try {
+        const newReport = await mysqlQuery(/*sql*/`
+            INSERT INTO timesheets 
+                (projectId, userId, task, hoursWorked, workDate)
+            values(?, ?, ?, ?, ?)`,
+            [projectId, userId, task, hoursWorked, workDate], mysqlClient)
+        
+        if (newReport.affectedRows === 0) {
+            if (uploadedFilePath) {
+                await deleteFile(uploadedFilePath, fs)
+            }
+            return res.status(400).send('No report was posted')
+        }
+
+        if (uploadedFilePath) {
+            const originalDir = path.dirname(uploadedFilePath)
+            const fileExtension = path.extname(req.file.originalname)
+            const filename = `${newReport.insertId}_${Date.now()}${fileExtension}`
+            const newFilePath = path.join(originalDir, filename)
+
+            fs.rename(uploadedFilePath, newFilePath, async (err) => {
+                if (err) {
+                    await deleteFile(uploadedFilePath, fs)
+                    return res.status(400).send('Error renaming file')
+                }
+            })
+
+            const image = await mysqlQuery(/*sql*/`
+                UPDATE 
+                    timesheets 
+                    SET documentImage = ? 
+                WHERE 
+                    timesheetId = ?`,
+                [filename, newReport.insertId], mysqlClient)
+
+            if (image.affectedRows === 0) {
+                await deleteFile(uploadedFilePath, fs)
+                return res.status(400).send('Image is not set')
+            }
+        }
+        res.status(201).send('Successfully posted...')
+    } catch (error) {
+        req.log.error(error)
+        return res.status(500).send(error)
+    }
+}
 
 module.exports = (app) => {
-    // app.get('/api/projects/history', readProjectHistorys)
-    // app.get('/api/projects/name', readProjectNames)
     app.get('/api/timesheets', readTimesheets)
-    // app.get('/api/projects/:projectId', readProjectById)
-    // app.post('/api/projects', createProject)
-    // app.put('/api/projects/:projectId', editproject)
-    // app.delete('/api/projects/:projectId', deleteProjectById)
+    app.post('/api/timesheets', multerMiddleware, createTimesheet)
 }
