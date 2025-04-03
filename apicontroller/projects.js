@@ -150,7 +150,7 @@ async function readProjectNames(req, res) {
 
     try {
         let projectNamesQuery = /*sql*/`
-            SELECT p.projectName 
+            SELECT p.projectName, p.userId
             FROM projects AS p`
         
         if (hr || employee) {
