@@ -146,23 +146,34 @@ async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient
     const inProgress = req.query.inProgress === 'true'
     const hr = req.query.hr === 'true'
+    const employee = req.query.employee === 'true'
+
     try {
-        let projectNamesQuery  = /*sql*/`
-            SELECT projectName FROM projects
-            WHERE deletedAt IS NULL`
-
-        if (inProgress) {
-            projectNamesQuery += ` AND status = 'onGoing'`
-        } 
-
-        if (hr) {
-            projectNamesQuery += ` AND role = 'hr'`
+        let projectNamesQuery = /*sql*/`
+            SELECT p.projectName 
+            FROM projects AS p`
+        
+        if (hr || employee) {
+            projectNamesQuery += " LEFT JOIN users AS ur ON ur.userId = p.userId"
         }
-        projectNamesQuery += ` ORDER BY projectName ASC`
-
+        
+        projectNamesQuery += " WHERE p.deletedAt IS NULL"
+        
+        if (inProgress) {
+            projectNamesQuery += " AND p.status = 'onGoing'"
+        }
+        
+        if (hr) {
+            projectNamesQuery += " AND ur.role = 'hr'"
+        } else if (employee) {
+            projectNamesQuery += " AND ur.role = 'employee'"
+        }
+        
+        projectNamesQuery += " ORDER BY p.projectName ASC"
+        
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
         return res.status(200).send(projectNamesResult)
-    } catch (error) {
+        } catch (error) {
         req.log.error(error)    
         res.status(500).send(error)
     }
