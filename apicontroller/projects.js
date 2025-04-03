@@ -150,11 +150,11 @@ async function readProjectNames(req, res) {
 
     try {
         let projectNamesQuery = /*sql*/`
-            SELECT p.projectName, p.employeeId
+            SELECT p.projectName, pe.employeeId
             FROM projects AS p`
         
         if (hr || employee) {
-            projectNamesQuery += " LEFT JOIN users AS ur ON ur.userId = p.employeeId"
+            projectNamesQuery += " LEFT JOIN projectEmployees AS pe ON pe.projectId = p.procjectId"
         }
         
         projectNamesQuery += " WHERE p.deletedAt IS NULL"
