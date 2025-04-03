@@ -189,6 +189,11 @@ async function readUserById(req, res) {
     const userId = req.params.userId
 
     try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (!userIsValid) {
+            return res.status(404).send('User is not found')
+        }
+
         const [user] = await mysqlQuery(/*sql*/`
             SELECT 
                 u.*,

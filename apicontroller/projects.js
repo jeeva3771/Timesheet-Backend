@@ -108,6 +108,11 @@ async function readProjectById(req, res) {
     const projectId = req.params.projectId
 
     try {
+        const projectIsValid = await validateProjectById(projectId, mysqlClient)
+        if (!projectIsValid) {
+            return res.status(404).send('Project is not found')
+        }
+        
         const [project] = await mysqlQuery(/*sql*/`
             SELECT 
                 p.*,
