@@ -173,7 +173,7 @@ async function readProjectNames(req, res) {
         
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
         return res.status(200).send(projectNamesResult)
-        } catch (error) {
+    } catch (error) {
         req.log.error(error)    
         res.status(500).send(error)
     }
