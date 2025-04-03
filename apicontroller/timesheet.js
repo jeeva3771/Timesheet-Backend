@@ -262,13 +262,13 @@ async function readTimesheets(req, res) {
 
 async function createTimesheet(req, res) {
     const mysqlClient = req.app.mysqlClient;
-    const { timesheets } = req.body;  // Assuming 'timesheets' is an array of records to be posted
+    const { timesheets } = req.body;
     const userId = req.session.user.userId;
-    const uploadedFilePath = req.file?.path || null;
+    const uploadedFiles = req.files || [];
 
     if (!['hr', 'employee'].includes(req.session.user.role)) {
-        if (uploadedFilePath) {
-            await deleteFile(uploadedFilePath, fs);
+        for (const file of uploadedFiles) {
+            await deleteFile(file.path, fs);
         }
         return res.status(409).send('User does not have permission to post report');
     }
@@ -276,91 +276,79 @@ async function createTimesheet(req, res) {
     let errors = [];
 
     try {
-        // Validate each timesheet record in the array
-        for (const timesheet of timesheets) {
+        const parsedTimesheets = JSON.parse(timesheets);
+
+        for (const timesheet of parsedTimesheets) {
             await timesheetValidation.validate(timesheet, { abortEarly: false });
         }
-    } catch (validationError) {
-        errors = errors.concat(validationError.errors);
-    }
 
-    if (req.fileValidationError) {
-        errors.push(req.fileValidationError);
-    }
-
-    if (req.file && req.file.size > 5 * 1024 * 1024) {
-        errors.push('File size must be 5MB or less.');
-    }
-
-    if (errors.length > 0) {
-        if (uploadedFilePath) {
-            await deleteFile(uploadedFilePath, fs);
-        }
-        return res.status(400).send(errors);
-    }
-
-    const insertPromises = []; // To store promises for each insertion
-
-    try {
-        // Insert each timesheet record
-        for (const timesheet of timesheets) {
-            const { projectId, task, hoursWorked, workDate } = timesheet;
-            insertPromises.push(
-                mysqlQuery(/*sql*/`
-                    INSERT INTO timesheets 
-                        (projectId, userId, task, hoursWorked, workDate)
-                    VALUES (?, ?, ?, ?, ?)`,
-                    [projectId, userId, task, hoursWorked, workDate], mysqlClient)
-            );
+        if (uploadedFiles.some(file => file.size > 5 * 1024 * 1024)) {
+            errors.push('Each file size must be 5MB or less.');
         }
 
-        const insertResults = await Promise.all(insertPromises);
-
-        // If no rows were affected, handle the error and delete file if needed
-        if (insertResults.some(result => result.affectedRows === 0)) {
-            if (uploadedFilePath) {
-                await deleteFile(uploadedFilePath, fs);
+        if (errors.length > 0) {
+            for (const file of uploadedFiles) {
+                await deleteFile(file.path, fs);
             }
-            return res.status(400).send('No report was posted');
+            return res.status(400).send(errors);
         }
 
-        // Handle file upload and update documentImage field
-        if (uploadedFilePath) {
-            const originalDir = path.dirname(uploadedFilePath);
-            const fileExtension = path.extname(req.file.originalname);
-            const filename = `${Date.now()}${fileExtension}`;  // One file for all records
-            const newFilePath = path.join(originalDir, filename);
+        const insertResults = [];
 
-            fs.rename(uploadedFilePath, newFilePath, async (err) => {
-                if (err) {
-                    await deleteFile(uploadedFilePath, fs);
-                    return res.status(400).send('Error renaming file');
+        for (let i = 0; i < parsedTimesheets.length; i++) {
+            const { projectId, task, hoursWorked, workDate } = parsedTimesheets[i];
+
+            const result = await mysqlQuery(/*sql*/`
+                INSERT INTO timesheets 
+                    (projectId, userId, task, hoursWorked, workDate)
+                VALUES (?, ?, ?, ?, ?)
+            `, [projectId, userId, task, hoursWorked, workDate], mysqlClient);
+
+            if (result.affectedRows === 0) {
+                for (const file of uploadedFiles) {
+                    await deleteFile(file.path, fs);
                 }
-            });
+                return res.status(400).send('No report was posted');
+            }
 
-            const updateImagePromises = insertResults.map(result => {
-                return mysqlQuery(/*sql*/`
-                    UPDATE 
-                        timesheets 
+            insertResults.push({ timesheetId: result.insertId, file: uploadedFiles[i] });
+        }
+
+        for (const { timesheetId, file } of insertResults) {
+            if (file) {
+                const originalDir = path.dirname(file.path);
+                const fileExtension = path.extname(file.originalname);
+                const filename = `${timesheetId}_${Date.now()}${fileExtension}`;
+                const newFilePath = path.join(originalDir, filename);
+
+                await new Promise((resolve, reject) => {
+                    fs.rename(file.path, newFilePath, async (err) => {
+                        if (err) {
+                            await deleteFile(file.path, fs);
+                            return reject('Error renaming file');
+                        }
+                        resolve();
+                    });
+                });
+
+                const updateImageResult = await mysqlQuery(/*sql*/`
+                    UPDATE timesheets 
                     SET documentImage = ? 
-                    WHERE 
-                        timesheetId = ?`,
-                    [filename, result.insertId], mysqlClient);
-            });
+                    WHERE timesheetId = ?
+                `, [filename, timesheetId], mysqlClient);
 
-            const imageUpdateResults = await Promise.all(updateImagePromises);
-
-            if (imageUpdateResults.some(update => update.affectedRows === 0)) {
-                await deleteFile(uploadedFilePath, fs);
-                return res.status(400).send('Image is not set');
+                if (updateImageResult.affectedRows === 0) {
+                    await deleteFile(newFilePath, fs);
+                    return res.status(400).send('Image is not set');
+                }
             }
         }
 
         res.status(201).send('Successfully posted all timesheets.');
     } catch (error) {
         req.log.error(error);
-        if (uploadedFilePath) {
-            await deleteFile(uploadedFilePath, fs);
+        for (const file of uploadedFiles) {
+            await deleteFile(file.path, fs);
         }
         return res.status(500).send(error);
     }
