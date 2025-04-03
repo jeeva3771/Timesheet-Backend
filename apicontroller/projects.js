@@ -264,6 +264,11 @@ async function editproject(req, res) {
     values.push(updatedBy, projectId)
 
     try {
+        const projectIsValid = await validateProjectById(projectId, mysqlClient)
+        if (!projectIsValid) {
+            return res.status(404).send('Project is not found')
+        }
+        
         const project = await mysqlQuery(/*sql*/`
             SELECT * FROM projects 
             WHERE projectId = ? AND 
