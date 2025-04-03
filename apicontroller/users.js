@@ -577,8 +577,7 @@ async function deleteUserAvatar(req, res) {
     }
 }
 
-async function 
-(req, res) {
+async function changePassword(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
     const updatedBy = req.session.user.userId
@@ -870,8 +869,7 @@ module.exports = (app) => {
     app.put('/api/users/editavatar/:userId', multerMiddleware, updateUserAvatar)
     app.post('/api/users/generateotp', generateOtp)
     app.get('/api/logout', userLogOut)
-    app.put('/api/users/
-        /:userId', changePassword)
+    app.put('/api/users/changepassword/:userId', changePassword)
 }
 
 
