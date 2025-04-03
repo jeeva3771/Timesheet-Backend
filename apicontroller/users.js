@@ -480,12 +480,23 @@ async function updateUserAvatar(req, res) {
         return res.status(409).send('User is not valid to edit')
     }
 
+    if (req.file) {
+        uploadedFilePath = req.file.path
+    }
+
     try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (!userIsValid) {
+            if (uploadedFilePath) {
+                await deleteFile(uploadedFilePath, fs)
+            }
+            return res.status(404).send('User is not found')
+        }
+
         if (req.fileValidationError) {
            return res.status(400).send(req.fileValidationError)
         }
 
-        uploadedFilePath = req.file.path
         sharp(fs.readFileSync(uploadedFilePath))
             .resize({
                 width: parseInt(process.env.IMAGE_WIDTH),
@@ -664,6 +675,7 @@ async function generateOtp(req, res) {
         req.session.resetPassword = emailId
         return res.status(200).send('success')
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).send(error)
     }
