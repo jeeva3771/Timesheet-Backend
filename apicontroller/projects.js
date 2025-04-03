@@ -145,6 +145,7 @@ async function readProjectById(req, res) {
 async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient
     const inProgress = req.query.inProgress === 'true'
+    const hr = req.query.hr === 'true'
     try {
         let projectNamesQuery  = /*sql*/`
             SELECT projectName FROM projects
@@ -153,6 +154,10 @@ async function readProjectNames(req, res) {
         if (inProgress) {
             projectNamesQuery += ` AND status = 'onGoing'`
         } 
+
+        if (hr) {
+            projectNamesQuery += ` AND role = 'hr'`
+        }
         projectNamesQuery += ` ORDER BY projectName ASC`
 
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
