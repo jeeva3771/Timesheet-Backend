@@ -144,40 +144,33 @@ async function readProjectById(req, res) {
 
 async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient
-    const inProgress = req.query.inProgress === 'true'
-    const hr = req.query.hr === 'true'
-    const employee = req.query.employee === 'true'
+    const role = req.query.role
 
     try {
         let projectNamesQuery = /*sql*/`
-            SELECT p.projectName, p.employeeId
-            FROM projects AS p`
+            SELECT DISTINCT p.projectName
+            FROM projects AS p
+            INNER JOIN projectEmployees AS pe ON pe.projectId = p.projectId
+            INNER JOIN users AS u ON u.userId = pe.employeeId
+            WHERE p.deletedAt IS NULL 
+            AND p.status = 'onGoing'`
         
-        if (hr || employee) {
-            projectNamesQuery += " LEFT JOIN users AS ur ON ur.userId = p.employeeId"
+        if (role) {
+            projectNamesQuery += " AND u.role = ?"
         }
-        
-        projectNamesQuery += " WHERE p.deletedAt IS NULL"
-        
-        if (inProgress) {
-            projectNamesQuery += " AND p.status = 'onGoing'"
-        }
-        
-        if (hr) {
-            projectNamesQuery += " AND ur.role = 'hr'"
-        } else if (employee) {
-            projectNamesQuery += " AND ur.role = 'employee'"
-        }
-        
+
         projectNamesQuery += " ORDER BY p.projectName ASC"
-        
-        const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
+
+        const queryParams = role ? [role] : []
+        const projectNamesResult = await mysqlQuery(projectNamesQuery, queryParams, mysqlClient)
+
         return res.status(200).send(projectNamesResult)
     } catch (error) {
-        req.log.error(error)    
+        req.log.error(error)
         res.status(500).send(error)
     }
 }
+
 
 async function createProject(req, res) {
     const mysqlClient = req.app.mysqlClient
