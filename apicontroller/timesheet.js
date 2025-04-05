@@ -211,7 +211,7 @@ async function createTimesheet(req, res) {
             }
 
             const { projectId, task, hoursWorked, workDate } = timesheet;
-            const insertResult = await mysqlQuery(`
+            const insertResult = await mysqlQuery(/*sql*/`
                 INSERT INTO timesheets (projectId, userId, task, hoursWorked, workDate)
                 VALUES (?, ?, ?, ?, ?)`,
                 [projectId, userId, task, hoursWorked, workDate], mysqlClient
@@ -238,10 +238,10 @@ async function createTimesheet(req, res) {
                     })
                 })
 
-                const updateResult = await mysqlQuery(`
+                const updateResult = await mysqlQuery(/*sql*/`
                     UPDATE timesheets SET documentImage = ? WHERE timesheetId = ?`,
                     [filename, timesheetId], mysqlClient
-                );
+                )
 
                 if (updateResult.affectedRows === 0) {
                     throw new Error(`Image update failed for record ${i + 1}`)
