@@ -252,8 +252,6 @@ async function createTimesheet(req, res) {
         res.status(200).send({ success: true, message: 'All timesheets added successfully' })
 
     } catch (error) {
-
-        // Delete uploaded files (whether renamed or not)
         for (const file of uploadedFiles) {
             if (file?.path) await deleteFile(file.path, fs)
         }
