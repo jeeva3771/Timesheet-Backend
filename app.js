@@ -28,7 +28,7 @@ app.use(cookieParser())
 
 const corsOptions = {
     // origin: 'https://yellowgreen-crow-110465.hostingersite.com',
-    origin: 'http://localhost:5173/',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
     credentials : true,
 }
