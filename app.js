@@ -6,7 +6,9 @@ const pinoHttp = require('pino-http')
 const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const session = require('express-session')
-const FileStore = require('session-file-store')(session)
+var FileStore = require('session-file-store')(session)
+var fileStoreOptions = {}
+
 const { v4: uuidv4 } = require('uuid')
 const app = express()
 dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
@@ -34,7 +36,7 @@ app.use(cors(corsOptions))
 
 
 app.use(session({ 
-    store: new FileStore({}),
+    store: new FileStore(fileStoreOptions),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
