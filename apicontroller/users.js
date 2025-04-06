@@ -109,6 +109,7 @@ async function authentication(req, res) {
             res.status(400).send('Invalid Password.')
         }
     } catch (error) {
+        console.error(error)
         req.log.error(error)
         res.status(500).send(error)
     }
@@ -132,6 +133,10 @@ async function readUsers(req, res) {
     const searchQuery = req.query.search || ''
     const searchPattern = `%${searchQuery}%`
     let queryParameters = null
+
+    if (!['admin'].includes(req.session.user.role)) {
+        return res.status(409).send('User does not have permission to view')
+    }
     
     let usersQuery = /*sql*/`
         SELECT 
@@ -188,6 +193,10 @@ async function readUserById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
 
+    if (!['admin'].includes(req.session.user.role)) {
+        return res.status(409).send('User does not have permission to view')
+    }
+
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
@@ -218,6 +227,7 @@ async function readUserById(req, res) {
 async function readUsersNameAndRole(req, res) {
     const mysqlClient = req.app.mysqlClient
     const adminAndManager = req.query.adminAndManager === 'true'
+    
     try {
         let userDetails = /*sql*/`
             SELECT name, role FROM users

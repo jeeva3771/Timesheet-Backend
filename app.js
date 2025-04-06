@@ -4,7 +4,7 @@ const mysql = require('mysql2')
 const pino = require('pino')
 const pinoHttp = require('pino-http')
 const cookieParser = require('cookie-parser')
-// const cors = require('cors')
+const cors = require('cors')
 const session = require('express-session')
 const FileStore = require('session-file-store')(session)
 const { v4: uuidv4 } = require('uuid')
@@ -24,13 +24,13 @@ const logger = pino({
 app.use(express.json())
 app.use(cookieParser())
 
-// const corsOptions = {
-//     origin: 'https://yellowgreen-crow-110465.hostingersite.com',
-//     origin: 'http://localhost:3000',
-//     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
-//     credentials : true,
-// }
-// app.use(cors(corsOptions));
+const corsOptions = {
+    // origin: 'https://yellowgreen-crow-110465.hostingersite.com',
+    origin: 'http://localhost:5173/',
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
+    credentials : true,
+}
+app.use(cors(corsOptions))
 
 
 app.use(session({ 
