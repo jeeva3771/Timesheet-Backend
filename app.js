@@ -7,7 +7,15 @@ const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const session = require('express-session')
 var FileStore = require('session-file-store')(session)
-var fileStoreOptions = {}
+const fs = require('fs')
+if (!fs.existsSync('./sessions')) {
+    fs.mkdirSync('./sessions')
+}
+var fileStoreOptions = {
+    path: './sessions',
+    retries: 0 
+}
+
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
@@ -36,13 +44,16 @@ app.use(cors(corsOptions))
 
 
 app.use(session({ 
-    store: new FileStore(fileStoreOptions),
+    store: new FileStore({
+        path: './sessions',
+        retries: 0,
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
     cookie: {
-        maxAge: 1000 * 60 *60 * 24,
-        secure: false,  // Set to false if not using HTTPS
+        maxAge: 1000 * 60 * 60 * 24, // 1 day
+        secure: false,
     }
 }))
 
