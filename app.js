@@ -11,11 +11,6 @@ const fs = require('fs')
 if (!fs.existsSync('./sessions')) {
     fs.mkdirSync('./sessions')
 }
-var fileStoreOptions = {
-    path: './sessions',
-    retries: 0 
-}
-
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
@@ -42,12 +37,13 @@ const corsOptions = {
 }
 app.use(cors(corsOptions))
 
-
+var fileStoreOptions = {}
 app.use(session({ 
-    store: new FileStore({
-        path: './sessions',
-        retries: 0,
-    }),
+    // store: new FileStore({
+    //     path: './sessions',
+    //     retries: 0,
+    // }),
+    store: new FileStore(fileStoreOptions),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,

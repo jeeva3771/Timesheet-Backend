@@ -94,7 +94,7 @@ async function authentication(req, res) {
         if (!user) {
             req.session.isLogged = false
             req.session.user = null
-            return res.status(400).send('Invalid Email.')
+            return res.status(400).json('Invalid Email or Password.')
         }
 
         const isValid = await isPasswordValid(password, user.password)
@@ -102,16 +102,16 @@ async function authentication(req, res) {
         if (isValid) {
             req.session.user = user
             req.session.isLogged = true
-            res.status(200).send(user)
+            res.status(200).json(user)
         } else {
             req.session.isLogged = false
             req.session.user = null
-            res.status(400).send('Invalid Password.')
+            res.status(400).json('Invalid Email or Password.')
         }
     } catch (error) {
-        console.error(error)
+        console.log("Login error:", error)
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -135,7 +135,7 @@ async function readUsers(req, res) {
     let queryParameters = null
 
     if (!['admin'].includes(req.session.user.role)) {
-        return res.status(409).send('User does not have permission to view')
+        return res.status(409).json('User does not have permission to view')
     }
     
     let usersQuery = /*sql*/`
@@ -178,14 +178,14 @@ async function readUsers(req, res) {
             mysqlQuery(countQuery, countQueryParameters, mysqlClient)
         ])
 
-        res.status(200).send({
+        res.status(200).json({
             users: users,
             userCount: totalCount[0].totalUserCount
         })
 
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
