@@ -7,10 +7,10 @@ const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const session = require('express-session')
 var FileStore = require('session-file-store')(session)
-const fs = require('fs')
-if (!fs.existsSync('./sessions')) {
-    fs.mkdirSync('./sessions')
-}
+// const fs = require('fs')
+// if (!fs.existsSync('./sessions')) {
+//     fs.mkdirSync('./sessions')
+// }
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
@@ -32,21 +32,20 @@ app.use(cookieParser())
 const corsOptions = {
     // origin: 'https://yellowgreen-crow-110465.hostingersite.com',
     origin: 'http://localhost:5173',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
+    methods: ['GET', 'POST', 'PUT', 'DELETE'],
     credentials : true,
 }
 app.use(cors(corsOptions))
 
-var fileStoreOptions = {}
 app.use(session({ 
     // store: new FileStore({
     //     path: './sessions',
     //     retries: 0,
     // }),
-    store: new FileStore(fileStoreOptions),
+    store: new FileStore({}),
     secret: process.env.SESSION_SECRET,
     resave: false,
-    saveUninitialized: true,
+    saveUninitialized: false,
     cookie: {
         maxAge: 1000 * 60 * 60 * 24, // 1 day
         secure: false,
