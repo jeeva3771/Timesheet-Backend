@@ -230,12 +230,12 @@ async function readUserAvatarById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
     try {
-        const [userImage] = await mysqlQuery(/sql*/`
+        const [userImage] = await mysqlQuery(/*sql*/`
             SELECT image FROM users WHERE deletedAt IS NULL AND userId = ?`,
             [userId], mysqlClient)
-            console.log(userImage.image)
-        var fileName = userImage.image
-
+            
+        const fileName = userImage?.image || 'default.jpg'
+        
         const baseDir = path.join(__dirname, '..', 'useruploads')
         const imagePath = path.join(baseDir, fileName)
         const defaultImagePath = path.join(baseDir, 'default.jpg')
@@ -897,9 +897,9 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
-    app.put('/api/users/resetpassword', processResetPassword)
+    app.get('/api/users/avatar/:userId', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
-    app.get('/api/users/avatar', readUserAvatarById)
+    app.put('/api/users/resetpassword', processResetPassword)
     app.post('/api/login', authentication)
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)

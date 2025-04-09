@@ -17,7 +17,7 @@ async function readManagerAndEmployeeCount(req, res) {
         }
 
         if (active) {
-            countQuery += " AND status = '1'"
+            countQuery += " AND status = '1'"   
         }
 
         const [count] = await mysqlQuery(countQuery, [], mysqlClient)
