@@ -16,12 +16,12 @@ const yup = require('yup')
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
-        cb(null,  path.join(__dirname, '..', 'reportdocuploads')); // make sure this folder exists
+        cb(null,  path.join(__dirname, '..', 'reportdocuploads')) 
     },
     filename: (req, file, cb) => {
-        cb(null, `${Date.now()}-${file.originalname}`);
+        cb(null, `${Date.now()}-${file.originalname}`)
     }
-});
+})
 
 const fileFilter = (req, file, cb) => {
     const allowedMimeTypes = [
