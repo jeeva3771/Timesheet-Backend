@@ -92,12 +92,14 @@ const pageUsersSessionExclude = [
 ]
 
 app.use((req, res, next) => {
+    console.log(req.session.isLogged, '1111111111111')
     if (pageUsersSessionExclude.includes(req.originalUrl)) {
         return next()
     }
     
     if (req.originalUrl !== '/login/') {
         if (req.session.isLogged !== true) {
+            console.log(req.session.isLogged, 'req.session.isLogged')
             return res.status(401).send('Session expired.')
         }
     }
