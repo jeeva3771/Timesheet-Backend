@@ -7,10 +7,15 @@ const cookieParser = require('cookie-parser')
 const cors = require('cors')
 const session = require('express-session')
 var FileStore = require('session-file-store')(session)
-// const fs = require('fs')
-// if (!fs.existsSync('./sessions')) {
-//     fs.mkdirSync('./sessions')
-// }
+const fs = require('fs')
+if (!fs.existsSync('./sessions')) {
+    fs.mkdirSync('./sessions')
+}
+var fileStoreOptions = {
+    path: './sessions',
+    retries: 0 
+}
+
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
@@ -32,17 +37,17 @@ app.use(cookieParser())
 const corsOptions = {
     // origin: 'https://yellowgreen-crow-110465.hostingersite.com',
     origin: 'http://localhost:5173',
-    methods: ['GET', 'POST', 'PUT', 'DELETE'],
+    methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
     credentials : true,
 }
 app.use(cors(corsOptions))
 
+
 app.use(session({ 
-    // store: new FileStore({
-    //     path: './sessions',
-    //     retries: 0,
-    // }),
-    store: new FileStore({}),
+    store: new FileStore({
+        path: './sessions',
+        retries: 0,
+    }),
     secret: process.env.SESSION_SECRET,
     resave: false,
     saveUninitialized: true,
@@ -92,14 +97,12 @@ const pageUsersSessionExclude = [
 ]
 
 app.use((req, res, next) => {
-    console.log(req.session.isLogged, '1111111111111')
     if (pageUsersSessionExclude.includes(req.originalUrl)) {
         return next()
     }
     
     if (req.originalUrl !== '/login/') {
         if (req.session.isLogged !== true) {
-            console.log(req.session.isLogged, 'req.session.isLogged')
             return res.status(401).send('Session expired.')
         }
     }

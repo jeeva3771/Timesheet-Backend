@@ -139,9 +139,9 @@ async function readUsers(req, res) {
       : rawSearch || ''
     const searchPattern = `%${searchQuery}%`
   
-    if (!['admin'].includes(req.session.user.role)) {
-      return res.status(409).json('User does not have permission to view')
-    }
+    // if (!['admin'].includes(req.session.user.role)) {
+    //   return res.status(409).json('User does not have permission to view')
+    // }
   
     let usersQuery = /*sql*/`
       SELECT 
@@ -199,7 +199,7 @@ async function readUsers(req, res) {
       })
   
     } catch (error) {
-      req.log.error(error)
+      console.log(error)
       res.status(500).json(error)
     }
 }
