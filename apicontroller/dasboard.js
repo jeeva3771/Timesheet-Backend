@@ -23,13 +23,13 @@ async function readManagerAndEmployeeCount(req, res) {
         const [count] = await mysqlQuery(countQuery, [], mysqlClient)
 
         if (count.totalCount === 0) {
-            return res.status(404).send(`No ${manager ? 'manager' : 'employee'} found`)
+            return res.status(404).json(`No ${manager ? 'manager' : 'employee'} found`)
         }
-        res.status(200).send(count)
+        res.status(200).json(count)
     } catch (error) {
         console.log(error)
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).json(error.message)
     }
 }
 
@@ -49,12 +49,12 @@ async function readProjectCount(req, res) {
         const [count] = await mysqlQuery(countQuery, [], mysqlClient)
 
         if (count.totalProjectCount === 0) {
-            return res.status(404).send(`No project found`)
+            return res.status(404).json(`No project found`)
         }
-        res.status(200).send(count)
+        res.status(200).json(count)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).json(error.message)
     }
 }
 
@@ -70,12 +70,12 @@ async function readClientCount(req, res) {
         const [count] = await mysqlQuery(countQuery, [], mysqlClient)
 
         if (count.totalClientCount === 0) {
-            return res.status(404).send(`No client found`)
+            return res.status(404).json(`No client found`)
         }
-        res.status(200).send(count)
+        res.status(200).json(count)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).json(error.message)
     }
 }
 

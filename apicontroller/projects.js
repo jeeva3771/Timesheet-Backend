@@ -92,14 +92,14 @@ async function readProjects(req, res) {
             mysqlQuery(countQuery, countQueryParameters, mysqlClient)
         ])
 
-        res.status(200).send({
+        res.status(200).json({
             projects: projects,
             projectCount: totalCount[0].totalProjectCount
         })
 
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -110,7 +110,7 @@ async function readProjectById(req, res) {
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).send('Project is not found')
+            return res.status(404).json('Project is not found')
         }
         
         const [project] = await mysqlQuery(/*sql*/`
@@ -135,10 +135,10 @@ async function readProjectById(req, res) {
             GROUP BY p.projectId`, 
             [projectId], mysqlClient)
             
-        res.status(200).send(project)
+        res.status(200).json(project)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -172,10 +172,10 @@ async function readProjectNames(req, res) {
         projectNamesQuery += " ORDER BY p.projectName ASC"
         
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
-        return res.status(200).send(projectNamesResult)
+        return res.status(200).json(projectNamesResult)
     } catch (error) {
         req.log.error(error)    
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -194,13 +194,13 @@ async function createProject(req, res) {
     const assignedEmployees = Array.isArray(employeeIds) ? employeeIds : [employeeIds]
 
     if (!['admin', 'manager'].includes(req.session.user.role)) {
-        return res.status(409).send('User does not have permission to create a project')
+        return res.status(409).json('User does not have permission to create a project')
     }
 
     try {
         const validationErrors = await validatePayload(req.body, false, null, mysqlClient)
         if (validationErrors.length > 0) {
-            return res.status(400).send(validationErrors)
+            return res.status(400).json(validationErrors)
         }
 
         const newProject = await mysqlQuery(/*sql*/`
@@ -210,7 +210,7 @@ async function createProject(req, res) {
             [projectName, clientName, managerId, startDate, endDate, status, createdBy], mysqlClient)
         
         if (newProject.affectedRows === 0) {
-            return res.status(400).send('No insert was made')
+            return res.status(400).json('No insert was made')
         }
 
         const projectId = newProject.insertId
@@ -228,9 +228,9 @@ async function createProject(req, res) {
                     [projectId], mysqlClient)
 
                 if (deleteProject.affectedRows === 0) {
-                    return res.status(400).send('Project is created but employee(s) not assigned')
+                    return res.status(400).json('Project is created but employee(s) not assigned')
                 }
-                return res.status(400).send('Assigned employees are not inserted')
+                return res.status(400).json('Assigned employees are not inserted')
             }
 
             const employeeNamesResult = await mysqlQuery(/*sql*/`
@@ -250,13 +250,13 @@ async function createProject(req, res) {
                 [projectId, action, changes, createdBy], mysqlClient)
         
             if (historyEntry.affectedRows === 0) {
-                return res.status(400).send('Failed to insert history record')
+                return res.status(400).json('Failed to insert history record')
             }
         }
-        res.status(201).send('Successfully created.')
+        res.status(201).json('Successfully created.')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -270,7 +270,7 @@ async function editproject(req, res) {
     let changes = []
 
     if (!['admin', 'manager'].includes(req.session.user.role)) {
-        return res.status(409).send('User does not have permission to edit a project')
+        return res.status(409).json('User does not have permission to edit a project')
     }
 
     ALLOWED_UPDATE_KEYS.forEach((key) => {
@@ -287,12 +287,12 @@ async function editproject(req, res) {
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).send('Project is not found')
+            return res.status(404).json('Project is not found')
         }
 
         const validationErrors = await validatePayload(req.body, true, projectId, mysqlClient)
         if (validationErrors.length > 0) {
-            return res.status(400).send(validationErrors)
+            return res.status(400).json(validationErrors)
         }
 
         const project = await mysqlQuery(/*sql*/`
@@ -302,7 +302,7 @@ async function editproject(req, res) {
             [projectId], mysqlClient)
 
         if (!project || project.length === 0) {
-            return res.status(404).send('Project not found')
+            return res.status(404).json('Project not found')
         }
 
         const originalProject = project[0]
@@ -359,7 +359,7 @@ async function editproject(req, res) {
             values, mysqlClient)
 
         if (updateUser.affectedRows === 0) {
-            return res.status(204).send('No changes made')
+            return res.status(204).json('No changes made')
         }
 
         if (employeesToInsert.length > 0) {
@@ -389,13 +389,13 @@ async function editproject(req, res) {
                 [projectId, action, changesText, updatedBy, updatedBy], mysqlClient)
 
             if (historyEntry.affectedRows === 0) {
-                return res.status(400).send('Failed to insert history record')
+                return res.status(400).json('Failed to insert history record')
             }
         }
-        res.status(200).send('Successfully updated.')
+        res.status(200).json('Successfully updated.')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -405,13 +405,13 @@ async function deleteProjectById(req, res) {
     const deletedBy = req.session.user.userId
 
     if (!['admin', 'manager'].includes(req.session.user.role)) {
-        return res.status(409).send('User does not have permission to delete project')
+        return res.status(409).json('User does not have permission to delete project')
     }
 
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).send('Project is not found')
+            return res.status(404).json('Project is not found')
         }
 
         const [project] = await mysqlQuery(/*sql*/`
@@ -421,7 +421,7 @@ async function deleteProjectById(req, res) {
             [projectId], mysqlClient)
 
         if (!project) {
-            return res.status(404).send('Project not found')
+            return res.status(404).json('Project not found')
         }
 
         const deletedProject = await mysqlQuery(/*sql*/`
@@ -435,7 +435,7 @@ async function deleteProjectById(req, res) {
         , mysqlClient)
 
         if (deletedProject.affectedRows === 0) {
-            return res.status(404).send('No change made')
+            return res.status(404).json('No change made')
         }
 
         const deleteProjectEmployee = await mysqlQuery(/*sql*/`
@@ -448,7 +448,7 @@ async function deleteProjectById(req, res) {
         , mysqlClient)
 
         if (deleteProjectEmployee.affectedRows === 0) {
-            return res.status(404).send('Project is deleted but not removed employee(s)')
+            return res.status(404).json('Project is deleted but not removed employee(s)')
         }
 
         const action = 'deleted'
@@ -460,12 +460,12 @@ async function deleteProjectById(req, res) {
             [projectId, action, changes, deletedBy, deletedBy], mysqlClient)
 
         if (historyEntry.affectedRows === 0) {
-            return res.status(400).send('Failed to insert history record')
+            return res.status(400).json('Failed to insert history record')
         }
-        res.status(200).send('Deleted successfully')
+        res.status(200).json('Deleted successfully')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -488,10 +488,10 @@ async function readProjectHistorys(req, res) {
             ORDER BY h.createdAt ASC`,
             [], mysqlClient)
 
-        res.status(200).send(projectHistory)
+        res.status(200).json(projectHistory)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 

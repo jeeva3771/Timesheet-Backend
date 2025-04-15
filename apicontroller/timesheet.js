@@ -169,7 +169,7 @@ async function readTimesheets(req, res) {
 
         let adjustedTotalHours = adjustHours(totalHours[0].totalHours || 0)
 
-        res.status(200).send({
+        res.status(200).json({
             timesheets: updatedTimesheets,
             totalTimesheetCount: defaultCount[0].totalTimesheetCount,
             totalAdjustedHoursWorked: adjustedTotalHours
@@ -177,7 +177,7 @@ async function readTimesheets(req, res) {
 
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -191,7 +191,7 @@ async function createTimesheet(req, res) {
         for (const file of uploadedFiles) {
             await deleteFile(file.path, fs)
         }
-        return res.status(403).send('Unauthorized access')
+        return res.status(403).json('Unauthorized access')
     }
 
     try {
@@ -249,14 +249,14 @@ async function createTimesheet(req, res) {
             }
         }
 
-        res.status(200).send({ success: true, message: 'All timesheets added successfully' })
+        res.status(200).json({ success: true, message: 'All timesheets added successfully' })
 
     } catch (error) {
         for (const file of uploadedFiles) {
             if (file?.path) await deleteFile(file.path, fs)
         }
 
-        res.status(400).send({ success: false, message: error.message || 'Failed to create timesheets' })
+        res.status(400).json({ success: false, message: error.message || 'Failed to create timesheets' })
     } 
 }
 

@@ -119,7 +119,7 @@ function userLogOut(req, res) {
     req.session.destroy((err) => {
         if (err) logger.error()
         // res.redirect('/login')
-        return res.status(200).send('Logout successfully')
+        return res.status(200).json('Logout successfully')
     })
 }
 
@@ -199,7 +199,7 @@ async function readUsers(req, res) {
       })
   
     } catch (error) {
-      console.log(error)
+      req.log.error(error)
       res.status(500).json(error)
     }
 }
@@ -210,13 +210,13 @@ async function readUserById(req, res) {
     const userId = req.params.userId
 
     if (!['admin'].includes(req.session.user.role)) {
-        return res.status(409).send('User does not have permission to view')
+        return res.status(409).json('User does not have permission to view')
     }
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).send('User is not found')
+            return res.status(404).json('User is not found')
         }
 
         const user = await mysqlQuery(/*sql*/`
@@ -234,10 +234,10 @@ async function readUserById(req, res) {
                 u.deletedAt IS NULL AND u.userId = ?`, 
             [userId], mysqlClient)
             
-        res.status(200).send(user)
+        res.status(200).json(user)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -261,7 +261,7 @@ async function readUserAvatarById(req, res) {
         fs.createReadStream(imageToServe).pipe(res)
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -283,10 +283,10 @@ async function readUsersNameAndRole(req, res) {
         userDetails += " ORDER BY name ASC"
 
         const nameAndRole = await mysqlQuery(userDetails, [], mysqlClient)
-        return res.status(200).send(nameAndRole)
+        return res.status(200).json(nameAndRole)
     } catch (error) {
         req.log.error(error)    
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -307,7 +307,7 @@ async function createUser(req, res) {
         if (uploadedFilePath) {
             await deleteFile(uploadedFilePath, fs)
         }
-        return res.status(409).send('User does not have permission to create')
+        return res.status(409).json('User does not have permission to create')
     }
 
     try {
@@ -316,7 +316,7 @@ async function createUser(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(400).send(validationErrors)
+            return res.status(400).json(validationErrors)
         }
 
         if (uploadedFilePath){
@@ -340,7 +340,7 @@ async function createUser(req, res) {
         
         if (newUser.affectedRows === 0) {
             await deleteFile(uploadedFilePath, fs)
-            return res.status(400).send('No insert was made')
+            return res.status(400).json('No insert was made')
         }
 
         if (uploadedFilePath) {
@@ -351,7 +351,7 @@ async function createUser(req, res) {
             fs.rename(uploadedFilePath, newFilePath, async (err) => {
                 if (err) {
                     await deleteFile(uploadedFilePath, fs)
-                    return res.status(400).send('Error renaming file')
+                    return res.status(400).json('Error renaming file')
                 }
             })
 
@@ -366,14 +366,14 @@ async function createUser(req, res) {
 
             if (image.affectedRows === 0) {
                 await deleteFile(uploadedFilePath, fs)
-                return res.status(400).send('Image is not set')
+                return res.status(400).json('Image is not set')
             }
         }
 
-        res.status(201).send('Successfully created.')
+        res.status(201).json('Successfully created.')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -386,7 +386,7 @@ async function editUser(req, res) {
     const updates = []
 
     if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).send('User does not have permission to edit')
+        return res.status(409).json('User does not have permission to edit')
     }
 
     ALLOWED_UPDATE_KEYS.forEach((key) => {
@@ -410,7 +410,7 @@ async function editUser(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(404).send('User is not found')
+            return res.status(404).json('User is not found')
         }
 
         const validUpdate = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
@@ -418,7 +418,7 @@ async function editUser(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(400).send(validUpdate)
+            return res.status(400).json(validUpdate)
         }
 
         const oldFilePath = await readUserImage(userId, mysqlClient)
@@ -440,7 +440,7 @@ async function editUser(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(204).send('No changes made')
+            return res.status(204).json('No changes made')
         }
 
         if (oldFilePath !== uploadedFilePath) {
@@ -466,17 +466,17 @@ async function editUser(req, res) {
 
             if (imageUpdate.affectedRows === 0) {
                 await deleteFile(uploadedFilePath, fs)
-                return res.status(204).send('Image not changed')
+                return res.status(204).json('Image not changed')
             }
             const rootDir = path.resolve(__dirname, '../')
             const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
             await deleteFile(imagePath, fs)
         }
 
-        res.status(200).send('Successfully updated.')
+        res.status(200).json('Successfully updated.')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -486,13 +486,13 @@ async function deleteUserById(req, res) {
     const deletedBy = req.session.user.userId
 
     if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).send('User does not have permission to delete')
+        return res.status(409).json('User does not have permission to delete')
     }
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).send('User is not found')
+            return res.status(404).json('User is not found')
         }
 
         const oldFilePath = await readUserImage(userId, mysqlClient)
@@ -508,7 +508,7 @@ async function deleteUserById(req, res) {
         , mysqlClient)
 
         if (deletedUser.affectedRows === 0) {
-            return res.status(404).send('No change made')
+            return res.status(404).json('No change made')
         }
 
         if (oldFilePath) {
@@ -516,10 +516,10 @@ async function deleteUserById(req, res) {
             const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
             await deleteFile(imagePath, fs)
         }
-        res.status(200).send('Deleted successfully')
+        res.status(200).json('Deleted successfully')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -529,11 +529,11 @@ async function updateUserAvatar(req, res) {
     const mysqlClient = req.app.mysqlClient
 
     if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).send('User does not have permission to edit')
+        return res.status(409).json('User does not have permission to edit')
     }
 
     if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
-        return res.status(409).send('User is not valid to edit')
+        return res.status(409).json('User is not valid to edit')
     }
 
     if (req.file) {
@@ -546,11 +546,11 @@ async function updateUserAvatar(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(404).send('User is not found')
+            return res.status(404).json('User is not found')
         }
 
         if (req.fileValidationError) {
-           return res.status(400).send(req.fileValidationError)
+           return res.status(400).json(req.fileValidationError)
         }
 
         sharp(fs.readFileSync(uploadedFilePath))
@@ -577,7 +577,7 @@ async function updateUserAvatar(req, res) {
 
         if (imageUpdate.affectedRows === 0) {
             await deleteFile(uploadedFilePath, fs)
-            return res.status(204).send('Image not changed')
+            return res.status(204).json('Image not changed')
         }
         
         if (oldFilePath) {
@@ -586,10 +586,10 @@ async function updateUserAvatar(req, res) {
             await deleteFile(imagePath, fs)
         }
 
-        return res.status(200).send('Image updated successfully')
+        return res.status(200).json('Image updated successfully')
     } catch (error) {
         req.log.error(error)
-        return res.status(500).send(error)
+        return res.status(500).json(error)
     }
 }
 
@@ -598,18 +598,18 @@ async function deleteUserAvatar(req, res) {
     const userId = req.params.userId
 
     if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).send('User does not have permission to delete image')
+        return res.status(409).json('User does not have permission to delete image')
     }
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).send('User is not found to delete image')
+            return res.status(404).json('User is not found to delete image')
         }
 
         const oldFilePath = await readUserImage(userId, mysqlClient)
         if (oldFilePath === null) {
-            return res.status(404).send('Image is not found')
+            return res.status(404).json('Image is not found')
         }
 
         const deleteImage = await mysqlQuery(/*sql*/`
@@ -619,17 +619,17 @@ async function deleteUserAvatar(req, res) {
             [userId], mysqlClient)
         
         if (deleteImage.affectedRows === 0) {
-            return res.status(204).send('User already deleted or image is not deleted')
+            return res.status(204).json('User already deleted or image is not deleted')
         }
 
         const rootDir = path.resolve(__dirname, '../')
         const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
         await deleteFile(imagePath, fs)
 
-        res.status(200).send('Image deleted successfully')
+        res.status(200).json('Image deleted successfully')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -652,14 +652,14 @@ async function changePassword(req, res) {
         if (getExistsPassword.length > 0) {
             const validatePassword = await isPasswordValid(oldPassword, getExistsPassword[0].password)
             if (validatePassword === false) {
-                return res.status(400).send("Current password Invalid.")
+                return res.status(400).json("Current password Invalid.")
             }
         } else {
-            return res.status(404).send('User is Invalid.')
+            return res.status(404).json('User is Invalid.')
         }
 
         if (newPassword.length < 6) {
-            return res.status(400).send('New password is Invalid.')
+            return res.status(400).json('New password is Invalid.')
         } 
 
         const newHashGenerator = await hashPassword(newPassword)
@@ -674,13 +674,13 @@ async function changePassword(req, res) {
         mysqlClient)
 
         if (updatePassword.affectedRows === 0) {
-            return res.status(204).send("No changes made")
+            return res.status(204).json("No changes made")
         }
 
-        res.status(200).send('Changed password successfully')
+        res.status(200).json('Changed password successfully')
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -699,14 +699,14 @@ async function generateOtp(req, res) {
             [emailId], mysqlClient)
 
         if (user.length === 0) {
-            return res.status(404).send('Invalid Email.')
+            return res.status(404).json('Invalid Email.')
         }
 
         const UserOtpTiming = user[0].otpTiming
         const blockedTime = new Date(UserOtpTiming).getTime()
 
         if (currentTime < blockedTime) {
-            return res.status(401).send('User is blocked for a few hours')
+            return res.status(401).json('User is blocked for a few hours')
         }
 
         var otp = otpGenerator.generate(OTP_LIMIT_NUMBER, OTP_OPTION)
@@ -718,7 +718,7 @@ async function generateOtp(req, res) {
             [otp, emailId], mysqlClient)
 
         if (sendOtp.affectedRows === 0) {
-            return res.status(404).send('Enable to send OTP.')
+            return res.status(404).json('Enable to send OTP.')
         }
 
         const mailOptions = {
@@ -729,11 +729,11 @@ async function generateOtp(req, res) {
         await sendEmail(mailOptions)
 
         req.session.resetPassword = emailId
-        return res.status(200).send('success')
+        return res.status(200).json('success')
     } catch (error) {
         console.log(error)
         req.log.error(error)
-        res.status(500).send(error)
+        res.status(500).json(error)
     }
 }
 
@@ -754,7 +754,7 @@ async function processResetPassword(req, res) {
         );
 
         if (userDetails.length === 0) {
-            return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+            return res.status(404).json('Oops! Something went wrong. Please contact admin.')
         }
 
         const userOtp = userDetails[0].otp
@@ -764,7 +764,7 @@ async function processResetPassword(req, res) {
         const blockedTime = new Date(userOtpTiming).getTime()
 
         if (currentTime < blockedTime) {
-            return res.status(401).send('Access is currently blocked. Please retry after the designated wait time.')
+            return res.status(401).json('Access is currently blocked. Please retry after the designated wait time.')
         }
 
         if (userOtpAttempt >= otpAttemptMax) {
@@ -773,19 +773,19 @@ async function processResetPassword(req, res) {
 
             req.session.destroy(err => {
                 if (err) {
-                    return res.status(500).send('Error destroying session.')
+                    return res.status(500).json('Error destroying session.')
                 }
 
                 if (updatedUser.affectedRows === 0) {
-                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                    return res.status(404).json('Oops! Something went wrong. Please contact admin.')
                 }
-                return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
+                return res.status(401).json('You are temporarily blocked. Please try again in 3 hours.')
             })
         }
 
         if (otp === userOtp) {
             if (password.length < 6) {
-                return res.status(400).send('Password must be at least 6 characters long.')
+                return res.status(400).json('Password must be at least 6 characters long.')
             } 
             
             const hashGenerator = await hashPassword(password)
@@ -794,10 +794,10 @@ async function processResetPassword(req, res) {
                 [hashGenerator, emailId], mysqlClient)
 
             if (resetPassword.affectedRows === 0) {
-                return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                return res.status(404).json('Oops! Something went wrong. Please contact admin.')
             }
 
-            return res.status(200).send('success')
+            return res.status(200).json('success')
         } else {
             if (userOtpAttempt === 2) {
                 var updateBlockedTime = await mysqlQuery(/*sql*/`UPDATE users SET otp = null, otpAttempt = null,
@@ -805,22 +805,22 @@ async function processResetPassword(req, res) {
                     [emailId], mysqlClient)
 
                 if (updateBlockedTime.affectedRows === 0) {
-                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                    return res.status(404).json('Oops! Something went wrong. Please contact admin.')
                 }
-                return res.status(401).send('You are temporarily blocked. Please try again in 3 hours.')
+                return res.status(401).json('You are temporarily blocked. Please try again in 3 hours.')
             } else {
                 var updateOtpAttempt = await mysqlQuery(/*sql*/`UPDATE users SET otpAttempt = ? + 1
                 WHERE emailId = ? AND deletedAt IS NULL`, [userOtpAttempt, emailId], mysqlClient)
 
                 if (updateOtpAttempt.affectedRows === 0) {
-                    return res.status(404).send('Oops! Something went wrong. Please contact admin.')
+                    return res.status(404).json('Oops! Something went wrong. Please contact admin.')
                 }
-                return res.status(400).send('Invalid OTP.')
+                return res.status(400).json('Invalid OTP.')
             }
         }
     } catch (error) {
         req.log.error(error)
-        res.status(500).send(error.message)
+        res.status(500).json(error.message)
     }
 }
 
