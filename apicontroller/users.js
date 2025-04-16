@@ -39,7 +39,7 @@ const upload = multer({ storage, fileFilter })
 const multerMiddleware = upload.single('image')
 
 const mainDetailsUserValidation = yup.object().shape({
-    name: yup.string().min(2, 'Name is invalid').required('Name is required'),
+    name: yup.string().min(2, 'Name is invalid').required('Name is required'), 
     dob: yup
         .date()
         .max(subYears(new Date(), 18), 'You must be at least 18 years old')
@@ -48,12 +48,6 @@ const mainDetailsUserValidation = yup.object().shape({
 })
 
 const baseUserValidation = yup.object().shape({
-    // password: yup
-    //     .string()
-    //     .min(6, 'Password must be at least 6 characters long')
-    //     .matches(/[\W_]/, 'Password must contain at least one special character')
-    //     .required('Password is required'),
-
     role: yup
         .string()
         .oneOf(['admin', 'employee', 'manager', 'hr'], 'Role is invalid') 
@@ -313,7 +307,6 @@ async function createUser(req, res) {
         role, 
         status
     } = req.body    
-    console.log(role, 'role')
     const createdBy = req.session.user.userId
     let uploadedFilePath = req.file?.path || null
 
@@ -402,113 +395,106 @@ async function editUser(req, res) {
     if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
         return res.status(409).json('User does not have permission to edit')
     }
-
-    ALLOWED_UPDATE_KEYS.forEach((key) => {
-        keyValue = req.body[key]
-        if (keyValue !== undefined) {
-            values.push(keyValue)
-            updates.push(` ${key} = ?`)
-        }
-    })
-
-    updates.push('updatedBy = ?')
-    values.push(updatedBy, userId)
-    
     try {
+        const oldFilePath = await readUserImage(userId, mysqlClient)
+
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            if (uploadedFilePath) {
-                uploadedFilePath = req.file.path
-                await deleteFile(uploadedFilePath, fs)
+            if (req.file?.path && req.file.path !== oldFilePath) {
+                await deleteFile(req.file.path, fs)
             }
             return res.status(404).json('User is not found')
         }
 
+        ALLOWED_UPDATE_KEYS.forEach((key) => {
+            const keyValue = req.body[key]
+            if (keyValue !== undefined) {
+                updates.push(`${key} = ?`)
+                values.push(keyValue)
+            }
+        })
+
+        updates.push('updatedBy = ?')
+        values.push(updatedBy, userId)
+
         if (req.file) {
             uploadedFilePath = req.file.path
-        } else {
+        } else if (req.body.removeImage === true) {
             const deleteImage = await mysqlQuery(/*sql*/`
                 UPDATE users SET image = NULL 
-                WHERE userId = ? AND 
-                    deletedAt IS NULL`,
-                [userId], mysqlClient)
-            
+                WHERE userId = ? AND deletedAt IS NULL`,
+                [userId],
+                mysqlClient
+            )
+
             if (deleteImage.affectedRows === 0) {
                 return res.status(204).json('Image is not deleted')
             }
-            const [image] = await mysqlQuery(/*sql*/`SELECT image from users WHERE userId = ? AND deletedAt is NULL`,
-                [userId], mysqlClient)
-                console.log(image.image, 'imajkfjkj')
-            if (image) {
-                const rootDir = path.resolve(__dirname, '../')
-                const imagePath = path.join(rootDir, 'useruploads', image.image)
+
+            if (oldFilePath) {
+                const imagePath = path.resolve(__dirname, '../useruploads', oldFilePath)
                 await deleteFile(imagePath, fs)
             }
         }
 
-        const validUpdate = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
-        if (validUpdate.length > 0) {
-            if (uploadedFilePath) {
+        const validationErrors = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
+        if (validationErrors.length > 0) {
+            if (uploadedFilePath && uploadedFilePath !== oldFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(400).json(validUpdate)
+            return res.status(400).json(validationErrors)
         }
-
-        const oldFilePath = await readUserImage(userId, mysqlClient)
 
         const passwordIndex = ALLOWED_UPDATE_KEYS.indexOf('password')
         if (passwordIndex >= 0 && req.body.password) {
-            const hashedPassword = md5(req.body.password)
-            values[passwordIndex] = hashedPassword
+            values[passwordIndex] = md5(req.body.password)
         }
 
         const updateUser = await mysqlQuery(/*sql*/`
-            UPDATE 
-                users SET ${updates.join(', ')} 
-            WHERE userId = ? AND 
-                deletedAt IS NULL`,
-            values, mysqlClient)
+            UPDATE users SET ${updates.join(', ')} 
+            WHERE userId = ? AND deletedAt IS NULL`,
+            values,
+            mysqlClient
+        )
 
         if (updateUser.affectedRows === 0) {
-            if (uploadedFilePath) {
+            if (uploadedFilePath && uploadedFilePath !== oldFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
             return res.status(204).json('No changes made')
         }
 
-        if (uploadedFilePath && oldFilePath !== uploadedFilePath) {
+        if (uploadedFilePath && uploadedFilePath !== oldFilePath) {
             await sharp(fs.readFileSync(uploadedFilePath))
-            .resize({
-                width: parseInt(process.env.IMAGE_WIDTH),
-                height: parseInt(process.env.IMAGE_HEIGHT),
-                fit: sharp.fit.cover,
-                position: sharp.strategy.center,
-            })
-            .toFile(uploadedFilePath)
+                .resize({
+                    width: parseInt(process.env.IMAGE_WIDTH),
+                    height: parseInt(process.env.IMAGE_HEIGHT),
+                    fit: sharp.fit.cover,
+                    position: sharp.strategy.center
+                })
+                .toFile(uploadedFilePath)
 
-            const pathName = path.basename(uploadedFilePath)
-
-            const imageUpdate =  await mysqlQuery(/*sql*/`
-                UPDATE 
-                    users 
-                    SET image = ? 
-                WHERE 
-                    userId = ? AND 
-                    deletedAt IS NULL`,
-                [pathName, userId], mysqlClient)
+            const fileName = path.basename(uploadedFilePath)
+            const imageUpdate = await mysqlQuery(/*sql*/`
+                UPDATE users SET image = ? 
+                WHERE userId = ? AND deletedAt IS NULL`,
+                [fileName, userId],
+                mysqlClient
+            )
 
             if (imageUpdate.affectedRows === 0) {
                 await deleteFile(uploadedFilePath, fs)
                 return res.status(204).json('Image not changed')
             }
-            const rootDir = path.resolve(__dirname, '../')
-            const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
-            await deleteFile(imagePath, fs)
+
+            if (oldFilePath) {
+                const imagePath = path.resolve(__dirname, '../useruploads', oldFilePath)
+                await deleteFile(imagePath, fs)
+            }
         }
 
         res.status(200).json('Successfully updated.')
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -955,6 +941,7 @@ async function readUserImage(userId, mysqlClient) {
             deletedAt IS NULL`,
         [userId], mysqlClient
     )
+    console.log(user)
     return user ? user.image : null 
 }
 
