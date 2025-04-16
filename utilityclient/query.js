@@ -18,6 +18,7 @@ function mysqlQuery(sql, options, mysqlClient) {
 function deleteFile(path, fs) {
     return new Promise((resolve, reject) => {
         if (!fs.existsSync(path)) {
+            console.log('exis')
             return resolve()
         }
 
@@ -25,6 +26,8 @@ function deleteFile(path, fs) {
             if (err) {
                 return reject(err)
             }
+            console.log('ok')
+
             resolve()
         })
     })

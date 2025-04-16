@@ -47,12 +47,12 @@ const mainDetailsUserValidation = yup.object().shape({
     emailId: yup.string().email('Invalid email format').required('Email is required'),
 })
 
-const userValidation = yup.object().shape({
-    password: yup
-        .string()
-        .min(6, 'Password must be at least 6 characters long')
-        .matches(/[\W_]/, 'Password must contain at least one special character')
-        .required('Password is required'),
+const baseUserValidation = yup.object().shape({
+    // password: yup
+    //     .string()
+    //     .min(6, 'Password must be at least 6 characters long')
+    //     .matches(/[\W_]/, 'Password must contain at least one special character')
+    //     .required('Password is required'),
 
     role: yup
         .string()
@@ -63,6 +63,14 @@ const userValidation = yup.object().shape({
         .number()
         .oneOf([0, 1], 'Status is invalid')
         .required('Status is required'),
+})
+
+const passwordValidation = yup.object().shape({
+    password: yup
+        .string()
+        .min(6, 'Password must be at least 6 characters long')
+        .matches(/[\W_]/, 'Password must contain at least one special character')
+        .required('Password is required'),
 })
 
 const ALLOWED_UPDATE_KEYS = [
@@ -97,6 +105,12 @@ async function authentication(req, res) {
             return res.status(400).json('Invalid Email or Password.')
         }
 
+        if (user.status !== 1) {
+            req.session.isLogged = false
+            req.session.user = null
+            return res.status(400).json('User is not active. Contact admin.')
+        }
+
         const isValid = await isPasswordValid(password, user.password)
 
         if (isValid) {
@@ -109,7 +123,6 @@ async function authentication(req, res) {
             res.status(400).json('Invalid Email or Password.')
         }
     } catch (error) {
-        console.log("Login error:", error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -139,9 +152,9 @@ async function readUsers(req, res) {
       : rawSearch || ''
     const searchPattern = `%${searchQuery}%`
   
-    // if (!['admin'].includes(req.session.user.role)) {
-    //   return res.status(409).json('User does not have permission to view')
-    // }
+    if (!['admin'].includes(req.session.user.role)) {
+      return res.status(409).json('User does not have permission to view')
+    }
   
     let usersQuery = /*sql*/`
       SELECT 
@@ -300,6 +313,7 @@ async function createUser(req, res) {
         role, 
         status
     } = req.body    
+    console.log(role, 'role')
     const createdBy = req.session.user.userId
     let uploadedFilePath = req.file?.path || null
 
@@ -400,17 +414,36 @@ async function editUser(req, res) {
     updates.push('updatedBy = ?')
     values.push(updatedBy, userId)
     
-    if (req.file) {
-        uploadedFilePath = req.file.path
-    }
-
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
             if (uploadedFilePath) {
+                uploadedFilePath = req.file.path
                 await deleteFile(uploadedFilePath, fs)
             }
             return res.status(404).json('User is not found')
+        }
+
+        if (req.file) {
+            uploadedFilePath = req.file.path
+        } else {
+            const deleteImage = await mysqlQuery(/*sql*/`
+                UPDATE users SET image = NULL 
+                WHERE userId = ? AND 
+                    deletedAt IS NULL`,
+                [userId], mysqlClient)
+            
+            if (deleteImage.affectedRows === 0) {
+                return res.status(204).json('Image is not deleted')
+            }
+            const [image] = await mysqlQuery(/*sql*/`SELECT image from users WHERE userId = ? AND deletedAt is NULL`,
+                [userId], mysqlClient)
+                console.log(image.image, 'imajkfjkj')
+            if (image) {
+                const rootDir = path.resolve(__dirname, '../')
+                const imagePath = path.join(rootDir, 'useruploads', image.image)
+                await deleteFile(imagePath, fs)
+            }
         }
 
         const validUpdate = await validatePayload(req.fileValidationError, req.body, true, userId, mysqlClient)
@@ -443,7 +476,7 @@ async function editUser(req, res) {
             return res.status(204).json('No changes made')
         }
 
-        if (oldFilePath !== uploadedFilePath) {
+        if (uploadedFilePath && oldFilePath !== uploadedFilePath) {
             await sharp(fs.readFileSync(uploadedFilePath))
             .resize({
                 width: parseInt(process.env.IMAGE_WIDTH),
@@ -475,6 +508,7 @@ async function editUser(req, res) {
 
         res.status(200).json('Successfully updated.')
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -839,7 +873,19 @@ async function validatePayload(fileValidationError, body, isUpdate = false, user
             errors.push(fileValidationError)
         }
 
-        await userValidation.validate(body, { abortEarly: false })
+        try {
+            await baseUserValidation.validate(body, { abortEarly: false })
+        } catch (err) {
+            errors.push(...err.errors)
+        }
+
+        if (!isUpdate) {
+            try {
+                await passwordValidation.validate(body, { abortEarly: false })
+            } catch (err) {
+                errors.push(...err.errors)
+            }
+        }
 
     } catch (err) {
         errors.push(...err.errors)
