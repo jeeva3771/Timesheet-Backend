@@ -29,21 +29,34 @@ const projectValidation = yup.object().shape({
         .min(yup.ref('startDate'), 'End date cannot be before start date')
         .required('End date is required'),
     status: yup.mixed()
-        .oneOf(['onGoing', 'completed', 'onHold', 'notStarted'], 'Invalid status')
+        .oneOf(['active','pending','completed','notStarted'], 'Invalid status')
         .required('Status is required')
 })
 
-async function readProjects(req, res) {    
+async function readProjects(req, res) {
     const mysqlClient = req.app.mysqlClient
     const limit = req.query.limit ? parseInt(req.query.limit) : null
     const page = req.query.page ? parseInt(req.query.page) : null
     const offset = limit && page ? (page - 1) * limit : null
-    const orderBy = req.query.orderby
-    const sort = req.query.sort
+    const orderBy = req.query.orderby || 'p.projectId'
+    const sort = req.query.sort || 'DESC'
     const searchQuery = req.query.search || ''
     const searchPattern = `%${searchQuery}%`
-    let queryParameters = null
-    
+
+    const searchParams = [
+        searchPattern, // p.projectName
+        searchPattern, // u.name (createdBy)
+        searchPattern, // u2.name (manager)
+        searchPattern, // ue.name (assigned employee)
+        searchPattern, // p.client
+        searchPattern, // p.startDate
+        searchPattern, // p.endDate
+        searchPattern  // p.status
+    ]
+
+    let queryParameters = [...searchParams]
+    let countQueryParameters = [...searchParams]
+
     let projectsQuery = /*sql*/`
         SELECT 
             p.*,
@@ -59,10 +72,18 @@ async function readProjects(req, res) {
         LEFT JOIN users AS ue ON ue.userId = pe.employeeId
         WHERE 
             p.deletedAt IS NULL AND 
-            (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ?)
+            (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ? OR p.clientName LIKE ?
+                OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ? 
+                OR DATE_FORMAT(p.endDate, "%d-%b-%Y") LIKE ?
+                OR p.status LIKE ?)
         GROUP BY p.projectId
         ORDER BY ${orderBy} ${sort}`
-        
+
+    if (limit >= 0) {
+        projectsQuery += ' LIMIT ? OFFSET ?'
+        queryParameters.push(limit, offset)
+    }
+
     let countQuery = /*sql*/`
         SELECT COUNT(DISTINCT p.projectId) AS totalProjectCount
         FROM projects AS p
@@ -72,19 +93,10 @@ async function readProjects(req, res) {
         LEFT JOIN users AS ue ON ue.userId = pe.employeeId        
         WHERE 
             p.deletedAt IS NULL AND 
-            (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ?)`
-
-    if (limit >= 0) {
-        projectsQuery += ' LIMIT ? OFFSET ?'
-        queryParameters = [searchPattern, searchPattern, searchPattern,
-            searchPattern, limit, offset]
-    } else {
-        queryParameters = [searchPattern, searchPattern, searchPattern,
-            searchPattern]
-    }
-
-    const countQueryParameters = [searchPattern, searchPattern, searchPattern, 
-        searchPattern, limit, offset]
+            (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ? OR p.clientName LIKE ?
+                OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ? 
+                OR DATE_FORMAT(p.endDate, "%d-%b-%Y") LIKE ?
+                OR p.status LIKE ?)`
 
     try {
         const [projects, totalCount] = await Promise.all([
@@ -93,7 +105,7 @@ async function readProjects(req, res) {
         ])
 
         res.status(200).json({
-            projects: projects,
+            projects,
             projectCount: totalCount[0].totalProjectCount
         })
 
@@ -113,7 +125,7 @@ async function readProjectById(req, res) {
             return res.status(404).json('Project is not found')
         }
         
-        const [project] = await mysqlQuery(/*sql*/`
+        const project = await mysqlQuery(/*sql*/`
             SELECT 
                 p.*,
                 ur.name AS createdName,
@@ -160,7 +172,7 @@ async function readProjectNames(req, res) {
         projectNamesQuery += " WHERE p.deletedAt IS NULL"
         
         if (inProgress) {
-            projectNamesQuery += " AND p.status = 'onGoing'"
+            projectNamesQuery += " AND p.status = 'active'"
         }
         
         if (hr) {
