@@ -20,8 +20,8 @@ const projectValidation = yup.object().shape({
             yup.number()
                 .integer('Each Employee ID must be an integer')
         )
-        .required('Employee IDs list is required')
-        .test('all-positive', 'All Employee IDs must be positive', value => 
+        .required('Allot Employee is required')
+        .test('all-positive', 'Allot Employee must be entered', value => 
             Array.isArray(value) && value.length > 0 && value.every(id => Number.isInteger(id) && id > 0)
         ),
     startDate: yup.date().required('Start date is required'),
@@ -72,6 +72,7 @@ async function readProjects(req, res) {
         LEFT JOIN users AS ue ON ue.userId = pe.employeeId
         WHERE 
             p.deletedAt IS NULL AND 
+            pe.deletedAt IS NULL AND
             (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ? OR p.clientName LIKE ?
                 OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ? 
                 OR DATE_FORMAT(p.endDate, "%d-%b-%Y") LIKE ?
@@ -93,6 +94,7 @@ async function readProjects(req, res) {
         LEFT JOIN users AS ue ON ue.userId = pe.employeeId        
         WHERE 
             p.deletedAt IS NULL AND 
+            pe.deletedAt IS NULL AND
             (p.projectName LIKE ? OR u.name LIKE ? OR u2.name LIKE ? OR ue.name LIKE ? OR p.clientName LIKE ?
                 OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ? 
                 OR DATE_FORMAT(p.endDate, "%d-%b-%Y") LIKE ?
@@ -124,14 +126,15 @@ async function readProjectById(req, res) {
         if (!projectIsValid) {
             return res.status(404).json('Project is not found')
         }
-        
+
         const project = await mysqlQuery(/*sql*/`
             SELECT 
                 p.*,
                 ur.name AS createdName,
                 ur2.name AS updatedName,
                 ur3.name AS managerName,
-                GROUP_CONCAT(ue.name ORDER BY ue.name SEPARATOR ', ') AS assignedEmployees,
+                ue.userId AS employeeId,
+                ue.name AS employeeName,
                 DATE_FORMAT(p.startDate, "%d-%b-%Y") AS projectStart,
                 DATE_FORMAT(p.endDate, "%d-%b-%Y") AS projectEnd,
                 DATE_FORMAT(p.createdAt, "%d-%b-%Y %r") AS createdTime,
@@ -143,16 +146,40 @@ async function readProjectById(req, res) {
             LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
             LEFT JOIN users AS ue ON ue.userId = pe.employeeId
             WHERE p.deletedAt IS NULL 
+            AND pe.deletedAt IS NULL 
             AND p.projectId = ?
-            GROUP BY p.projectId`, 
-            [projectId], mysqlClient)
-            
-        res.status(200).json(project)
+        `, [projectId], mysqlClient)
+
+        if (project.length > 0) {
+            const baseData = project[0]
+
+            const assignedEmployeeIds = []
+            const assignedEmployeeNames = []
+
+            project.forEach(row => {
+                if (row.employeeId) {
+                    assignedEmployeeIds.push(row.employeeId)
+                    assignedEmployeeNames.push(row.employeeName)
+                }
+            });
+
+            const projectData = {
+                ...baseData,
+                assignedEmployeeIds,
+                assignedEmployeeNames: assignedEmployeeNames.join(', ')
+            };
+
+            res.status(200).json([projectData])
+        } else {
+            res.status(404).json('Project not found')
+        }
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
     }
 }
+
+
 
 async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient

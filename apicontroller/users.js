@@ -278,7 +278,7 @@ async function readUsersNameAndRole(req, res) {
     
     try {
         let userDetails = /*sql*/`
-            SELECT name, role FROM users
+            SELECT userId, name, role FROM users
             WHERE deletedAt IS NULL AND
                 status = 1 AND`
 
@@ -949,7 +949,7 @@ module.exports = (app) => {
     app.get('/api/users/avatar/:userId', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
     app.put('/api/users/resetpassword', processResetPassword)
-    app.post('/api/login', authentication)
+    app.post('/api/login', authentication)                       
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)
     app.post('/api/users', multerMiddleware, createUser)
