@@ -1,5 +1,6 @@
 const { mysqlQuery } = require('../utilityclient/query')
 const yup = require('yup')
+const { formatDateLocal, capitalizeWords } = require('../utilityclient/utils')
 
 const ALLOWED_UPDATE_KEYS = [
     "projectName",
@@ -345,21 +346,43 @@ async function editproject(req, res) {
         }
 
         const originalProject = project[0]
-
-        ALLOWED_UPDATE_KEYS.forEach((key, index) => {
+   
+        for (const key of ALLOWED_UPDATE_KEYS) {
             const newValue = req.body[key]
             const oldValue = originalProject[key]
-            if (newValue !== oldValue) {
+        
+            if (newValue !== undefined && newValue !== oldValue) {
                 if (key === 'startDate' || key === 'endDate') {
-                    const formattedOldValue = new Date(oldValue).toISOString().split('T')[0]
-                    const formattedNewValue = new Date(newValue).toISOString().split('T')[0]
-                    changes.push(`${key} changed from '${formattedOldValue}' to '${formattedNewValue}'`)
+                    const formattedNew = formatDateLocal(newValue)
+                    const formattedOld = formatDateLocal(oldValue)
+                    if (formattedNew !== formattedOld) {
+                        const label = key === 'startDate' ? 'Start Date' : 'End Date'
+                        changes.push(`${label} changed from '${formattedOld}' to '${formattedNew}'`)
+                    }
+                } else if (key === 'managerId') {
+                    const [managerRows] = await Promise.all([
+                        mysqlQuery(/*sql*/`SELECT userId, name FROM users WHERE userId IN (?, ?)`, [oldValue, newValue], mysqlClient)
+                    ])
+                    const oldManager = capitalizeWords(managerRows.find(user => user.userId == oldValue)?.name || oldValue)
+                    const newManager = capitalizeWords(managerRows.find(user => user.userId == newValue)?.name || newValue)
+                    changes.push(`Manager changed from '${oldManager}' to '${newManager}'`)
                 } else {
-                    changes.push(`${key} changed from '${oldValue}' to '${newValue}'`)
+                    // Label mapping
+                    let label = ''
+                    if (key === 'projectName') label = 'Project Name'
+                    else if (key === 'clientName') label = 'Client Name'
+                    else if (key === 'status') label = 'Status'
+                    else label = key
+        
+                    // Capitalize old value if it's "notStarted"
+                    const formattedOldValue = oldValue === 'notStarted' ? 'Not Started' : capitalizeWords(oldValue)
+                    const formattedNewValue = newValue === 'notStarted' ? 'Not Started' : capitalizeWords(newValue)
+        
+                    changes.push(`${label} changed from '${formattedOldValue}' to '${formattedNewValue}'`)
                 }
             }
-        })
-
+        }
+        
         const existingEmployees = await mysqlQuery(/*sql*/`
             SELECT employeeId FROM projectEmployees 
             WHERE projectId = ? AND 
@@ -377,7 +400,7 @@ async function editproject(req, res) {
                 WHERE userId IN (?)`,
                 [employeesToInsert], mysqlClient)
 
-            const employeeNamesToAddString = employeeNamesToAdd.map(emp => emp.name).join(', ')
+            const employeeNamesToAddString = capitalizeWords(employeeNamesToAdd.map(emp => emp.name).join(', '))
             changes.push(`Member(s) added: ${employeeNamesToAddString}`)
         }
 
@@ -387,7 +410,7 @@ async function editproject(req, res) {
                 WHERE userId IN (?)`,
                 [employeesToRemove], mysqlClient)
 
-            const employeeNamesToRemoveString = employeeNamesToRemove.map(emp => emp.name).join(', ')
+            const employeeNamesToRemoveString = capitalizeWords(employeeNamesToRemove.map(emp => emp.name).join(', '))
             changes.push(`Member(s) removed: ${employeeNamesToRemoveString}`)
         }
 
@@ -517,22 +540,27 @@ async function readProjectHistorys(req, res) {
                 p.projectName AS projectName, 
                 ur.name AS createdName,
                 h.action AS action,
-                DATE_FORMAT(h.createdAt, "%d-%b-%Y") AS createdDate,
-                DATE_FORMAT(h.createdAt, "%r") AS createdTime,
+                DATE_FORMAT(h.createdAt, "%d-%b-%Y %r") AS createdDate,
                 CONCAT(h.changes, ' by ', ur.name) AS changesWithCreator
             FROM projectHistorys AS h
             LEFT JOIN projects AS p ON p.projectId = h.projectId
             LEFT JOIN users AS ur ON ur.userId = h.createdBy
-            WHERE h.deletedAt IS NULL 
-            ORDER BY h.createdAt ASC`,
+            ORDER BY h.createdAt DESC`,
             [], mysqlClient)
-
-        res.status(200).json(projectHistory)
+        
+        const formattedHistory = projectHistory.map(record => ({
+            ...record,
+            createdName: capitalizeWords(record.createdName),
+            changesWithCreator: capitalizeWords(record.changesWithCreator)
+        }))
+            
+        res.status(200).json(formattedHistory)
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
     }
 }
+  
 
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
