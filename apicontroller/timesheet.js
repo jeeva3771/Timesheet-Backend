@@ -114,6 +114,7 @@ async function readTimesheets(req, res) {
     }
 
     let whereClause = `WHERE ` + whereConditions.join(' AND ')
+    whereClause += 'OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ?'
 
     let timesheetsQuery = /*sql*/`
         SELECT 
@@ -176,6 +177,7 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -184,6 +186,7 @@ async function readTimesheets(req, res) {
 async function createTimesheet(req, res) {
     const mysqlClient = req.app.mysqlClient
     const { timesheets } = req.body
+    console.log(timesheets)
     const userId = req.session.user.userId
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
 
@@ -249,14 +252,14 @@ async function createTimesheet(req, res) {
             }
         }
 
-        res.status(200).json({ success: true, message: 'All timesheets added successfully' })
+        res.status(200).json('Successfully submitted...')
 
     } catch (error) {
         for (const file of uploadedFiles) {
             if (file?.path) await deleteFile(file.path, fs)
         }
-
-        res.status(400).json({ success: false, message: error.message || 'Failed to create timesheets' })
+        console.log(error)
+        res.status(400).json(error)
     } 
 }
 

@@ -551,7 +551,7 @@ async function readProjectHistorys(req, res) {
         const formattedHistory = projectHistory.map(record => ({
             ...record,
             createdName: capitalizeWords(record.createdName),
-            changesWithCreator: capitalizeWords(record.changesWithCreator)
+            changesWithCreator: record.changesWithCreator
         }))
             
         res.status(200).json(formattedHistory)
