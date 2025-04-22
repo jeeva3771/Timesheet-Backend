@@ -182,6 +182,48 @@ async function readProjectById(req, res) {
 
 
 
+// async function readProjectNames(req, res) {
+//     const mysqlClient = req.app.mysqlClient
+//     const inProgress = req.query.inProgress === 'true'
+//     const hr = req.query.hr === 'true'
+//     const employee = req.query.employee === 'true'
+
+//     try {
+//         let projectNamesQuery = /*sql*/`
+//             SELECT p.projectName, pe.employeeId
+//             FROM projects AS p`
+        
+//         if (hr || employee) {
+//             projectNamesQuery += `
+//             LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
+//             LEFT JOIN users AS ur ON ur.userId = pe.employeeId`
+//         }
+        
+//         projectNamesQuery += " WHERE p.deletedAt IS NULL"
+        
+//         if (inProgress) {
+//             projectNamesQuery += " AND p.status = 'active'"
+//         }
+        
+//         if (hr) {
+//             projectNamesQuery += " AND ur.role = 'hr'"
+//         } 
+        
+//         if (employee) {
+//             projectNamesQuery += hr ? " OR ur.role = 'employee'" : " AND ur.role = 'employee'"
+//         }
+        
+//         projectNamesQuery += " ORDER BY p.projectName ASC"
+//         console.log(projectNamesQuery)
+        
+//         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
+//         return res.status(200).json(projectNamesResult)
+//     } catch (error) {
+//         req.log.error(error)    
+//         res.status(500).json(error)
+//     }
+// }
+
 async function readProjectNames(req, res) {
     const mysqlClient = req.app.mysqlClient
     const inProgress = req.query.inProgress === 'true'
@@ -194,30 +236,37 @@ async function readProjectNames(req, res) {
             FROM projects AS p`
         
         if (hr || employee) {
-            projectNamesQuery += " LEFT JOIN projectEmployees AS pe ON pe.projectId = p.procjectId"
+            projectNamesQuery += `
+            LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
+            LEFT JOIN users AS ur ON ur.userId = pe.employeeId`
         }
-        
+
         projectNamesQuery += " WHERE p.deletedAt IS NULL"
-        
+
         if (inProgress) {
             projectNamesQuery += " AND p.status = 'active'"
         }
-        
-        if (hr) {
-            projectNamesQuery += " AND ur.role = 'hr'"
-        } else if (employee) {
-            projectNamesQuery += " AND ur.role = 'employee'"
+
+        // Handle role filtering
+        if (hr || employee) {
+            const roles = []
+            if (hr) roles.push("'hr'")
+            if (employee) roles.push("'employee'")
+            projectNamesQuery += ` AND (ur.role IN (${roles.join(', ')}))`
         }
-        
+
         projectNamesQuery += " ORDER BY p.projectName ASC"
-        
+
+        console.log(projectNamesQuery)
+
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
         return res.status(200).json(projectNamesResult)
     } catch (error) {
-        req.log.error(error)    
+        req.log.error(error)
         res.status(500).json(error)
     }
 }
+
 
 async function createProject(req, res) {
     const mysqlClient = req.app.mysqlClient

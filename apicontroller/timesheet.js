@@ -114,7 +114,6 @@ async function readTimesheets(req, res) {
     }
 
     let whereClause = `WHERE ` + whereConditions.join(' AND ')
-    whereClause += 'OR DATE_FORMAT(p.startDate, "%d-%b-%Y") LIKE ?'
 
     let timesheetsQuery = /*sql*/`
         SELECT 
@@ -186,7 +185,6 @@ async function readTimesheets(req, res) {
 async function createTimesheet(req, res) {
     const mysqlClient = req.app.mysqlClient
     const { timesheets } = req.body
-    console.log(timesheets)
     const userId = req.session.user.userId
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
 
@@ -263,8 +261,39 @@ async function createTimesheet(req, res) {
     } 
 }
 
+async function readTimeSheetDocumentById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const timesheetId = req.params.timesheetId
+
+    try {
+        const [docImage] = await mysqlQuery(/*sql*/`
+            SELECT documentImage FROM timesheets 
+            WHERE timesheetId = ?`,
+            [timesheetId], mysqlClient)
+
+        const fileName = docImage?.documentImage
+        if (!fileName) {
+            return res.status(404).json("No image found for this timesheet")
+        }
+
+        const baseDir = path.join(__dirname, '..', 'reportdocuploads')
+        const imagePath = path.join(baseDir, fileName)
+
+        if (!fs.existsSync(imagePath)) {
+            return res.status(404).json("Image file does not exist on server")
+        }
+
+        res.setHeader('Content-Type', 'image/jpeg')
+        fs.createReadStream(imagePath).pipe(res)
+    } catch (error) {
+        console.log(error)
+        req.log.error(error)
+        res.status(500).json(error)
+    }
+}
 
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
     app.post('/api/timesheets', multerMiddleware, createTimesheet)
+    app.get('/api/timesheets/documentimage/:timesheetId', readTimeSheetDocumentById)
 }

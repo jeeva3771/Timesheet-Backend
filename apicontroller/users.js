@@ -941,7 +941,6 @@ async function readUserImage(userId, mysqlClient) {
             deletedAt IS NULL`,
         [userId], mysqlClient
     )
-    console.log(user)
     return user ? user.image : null 
 }
 

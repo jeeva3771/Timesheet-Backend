@@ -11,11 +11,6 @@ const fs = require('fs')
 if (!fs.existsSync('./sessions')) {
     fs.mkdirSync('./sessions')
 }
-var fileStoreOptions = {
-    path: './sessions',
-    retries: 0 
-}
-
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
