@@ -176,7 +176,6 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -256,7 +255,6 @@ async function createTimesheet(req, res) {
         for (const file of uploadedFiles) {
             if (file?.path) await deleteFile(file.path, fs)
         }
-        console.log(error)
         res.status(400).json(error)
     } 
 }
@@ -286,7 +284,6 @@ async function readTimeSheetDocumentById(req, res) {
         res.setHeader('Content-Type', 'image/jpeg')
         fs.createReadStream(imagePath).pipe(res)
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
