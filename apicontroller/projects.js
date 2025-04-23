@@ -257,8 +257,6 @@ async function readProjectNames(req, res) {
 
         projectNamesQuery += " ORDER BY p.projectName ASC"
 
-        console.log(projectNamesQuery)
-
         const projectNamesResult = await mysqlQuery(projectNamesQuery, [], mysqlClient)
         return res.status(200).json(projectNamesResult)
     } catch (error) {

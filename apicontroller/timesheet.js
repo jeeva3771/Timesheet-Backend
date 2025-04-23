@@ -1,18 +1,9 @@
 const { mysqlQuery, deleteFile } = require('../utilityclient/query')
 const multer = require('multer')
-const fs = require('fs')
 const path = require('path')
+const fs = require('fs')
+const mime = require('mime-types') // Make sure to install this: npm install mime-types
 const yup = require('yup')
-// const storage = multer.diskStorage({
-//     destination: function (req, file, cb) {
-//         cb(null, path.join(__dirname, '..', 'reportdocuploads'))
-//     },
-//     filename: function (req, file, cb) {
-//         const userId = req.params.userId
-//         const fileExtension = path.extname(file.originalname)
-//         cb(null, `${userId}_${Date.now()}${fileExtension}`)
-//     }
-// })
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -271,23 +262,27 @@ async function readTimeSheetDocumentById(req, res) {
 
         const fileName = docImage?.documentImage
         if (!fileName) {
-            return res.status(404).json("No image found for this timesheet")
+            return res.status(404).json("No document found for this timesheet")
         }
 
         const baseDir = path.join(__dirname, '..', 'reportdocuploads')
-        const imagePath = path.join(baseDir, fileName)
+        const filePath = path.join(baseDir, fileName)
 
-        if (!fs.existsSync(imagePath)) {
-            return res.status(404).json("Image file does not exist on server")
+        if (!fs.existsSync(filePath)) {
+            return res.status(404).json("File does not exist on server")
         }
 
-        res.setHeader('Content-Type', 'image/jpeg')
-        fs.createReadStream(imagePath).pipe(res)
+        const mimeType = mime.lookup(filePath) || 'application/octet-stream'
+        res.setHeader('Content-Type', mimeType)
+        res.setHeader('Content-Disposition', `inline; filename="${fileName}"`)
+
+        fs.createReadStream(filePath).pipe(res)
     } catch (error) {
-        req.log.error(error)
-        res.status(500).json(error)
+        req.log?.error?.(error)
+        res.status(500).json("Internal server error")
     }
 }
+
 
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
