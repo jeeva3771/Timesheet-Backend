@@ -272,27 +272,90 @@ async function readUserAvatarById(req, res) {
     }
 }
 
+// async function readUsersNameAndRole(req, res) {
+//     const mysqlClient = req.app.mysqlClient
+//     const adminAndManager = req.query.adminAndManager === 'true'
+//     const project = req.query.project
+    
+//     try {
+//         let userDetails = /*sql*/`
+//             SELECT userId, name, role FROM users
+//             WHERE deletedAt IS NULL AND
+//                 status = 1 AND`
+
+//         if (adminAndManager) {
+//             userDetails += " (role = 'admin' OR role = 'manager')"
+            
+//         } else {
+//             userDetails += " (role = 'hr' OR role = 'employee')"
+//         }
+//         let queryParameters = []
+
+
+//         if (project) {
+//             userDetails += " AND userId = ?"
+//             queryParameters.push(userId)
+//         }
+
+//         userDetails += " ORDER BY name ASC"
+        
+
+
+//         const nameAndRole = await mysqlQuery(userDetails, queryParameters, mysqlClient)
+//         return res.status(200).json(nameAndRole)
+//     } catch (error) {
+//         req.log.error(error)    
+//         res.status(500).json(error)
+//     }
+// }
+
 async function readUsersNameAndRole(req, res) {
     const mysqlClient = req.app.mysqlClient
     const adminAndManager = req.query.adminAndManager === 'true'
-    
+    const projectId = req.query.projectId || ''
+    const deleted = req.query.deleted === 'true'
+
     try {
         let userDetails = /*sql*/`
-            SELECT userId, name, role FROM users
-            WHERE deletedAt IS NULL AND
-                status = 1 AND`
-
-        if (adminAndManager) {
-            userDetails += " (role = 'admin' OR role = 'manager')"
-        } else {
-            userDetails += " (role = 'hr' OR role = 'employee')"
+            SELECT DISTINCT u.userId, u.name, u.role 
+            FROM users u`
+        
+        const queryParameters = []
+        const conditions = ['u.status = 1']
+        if (deleted) {
+            conditions.push('u.deletedAt IS NULL')
         }
-        userDetails += " ORDER BY name ASC"
 
-        const nameAndRole = await mysqlQuery(userDetails, [], mysqlClient)
+        // Join and add project-related condition if projectId is provided
+        if (projectId) {
+            userDetails += `
+                INNER JOIN projectEmployees pe ON pe.employeeId = u.userId 
+                AND pe.projectId = ?`
+            conditions.push('pe.deletedAt IS NULL')
+            queryParameters.push(projectId)
+        }
+
+        // Role filter
+        if (adminAndManager) {
+            conditions.push(`(u.role = 'admin' OR u.role = 'manager')`)
+        } else {
+            conditions.push(`(u.role = 'hr' OR u.role = 'employee')`)
+        }
+
+        // Final WHERE and ORDER
+        userDetails += `
+            WHERE ${conditions.join(' AND ')} 
+            ORDER BY u.name ASC`
+
+        const nameAndRole = await mysqlQuery(userDetails, queryParameters, mysqlClient)
+        
+        if (nameAndRole.length === 0) {
+            return res.status(404).json('No users found or project not found')
+        }
+
         return res.status(200).json(nameAndRole)
     } catch (error) {
-        req.log.error(error)    
+        req.log.error(error)
         res.status(500).json(error)
     }
 }

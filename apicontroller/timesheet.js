@@ -77,20 +77,20 @@ async function readTimesheets(req, res) {
     const sort = req.query.sort || 'DESC'
     const fromDate = req.query.fromDate || null
     const toDate = req.query.toDate || null
-    const name = req.query.name || null
-    const projectName = req.query.projectName || null
+    const userId = req.query.userId || null
+    const projectId = req.query.projectId || null
 
     let whereConditions = ["1=1"]
     let queryParameters = []
 
-    if (name) {
-        whereConditions.push(`ur.name = ?`)
-        queryParameters.push(name)
+    if (userId) {
+        whereConditions.push(`ur.userId = ?`)
+        queryParameters.push(userId)
     }
     
-    if (projectName) {
-        whereConditions.push(`p.projectName = ?`)
-        queryParameters.push(projectName)
+    if (projectId) {
+        whereConditions.push(`p.projectId = ?`)
+        queryParameters.push(projectId)
     }
 
     if (fromDate && toDate) {
@@ -167,6 +167,7 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -177,6 +178,13 @@ async function createTimesheet(req, res) {
     const { timesheets } = req.body
     const userId = req.session.user.userId
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
+
+    if (req.body.userId && req.body.userId !== userId) {
+        for (const file of uploadedFiles) {
+            await deleteFile(file.path, fs);
+        }
+        return res.status(403).json('User not valid');
+    }
 
     if (!['hr', 'employee'].includes(req.session.user.role)) {
         for (const file of uploadedFiles) {
