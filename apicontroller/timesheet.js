@@ -362,7 +362,7 @@ async function createTimesheet(req, res) {
         // 10. Rollback DB records
         if (insertedIds.length > 0) {
             await mysqlQuery(
-                `DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
+                /*sql*/`DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
                 insertedIds,
                 mysqlClient
             )
