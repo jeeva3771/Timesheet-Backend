@@ -167,95 +167,217 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
 }
 
+// async function createTimesheet(req, res) {
+//     const mysqlClient = req.app.mysqlClient
+//     const { timesheets } = req.body
+//     const userId = req.session.user.userId
+//     const uploadedFiles = Array.isArray(req.files) ? req.files : []
+
+//     if (req.body.userId && req.body.userId !== userId) {
+//         for (const file of uploadedFiles) {
+//             await deleteFile(file.path, fs)
+//         }
+//         return res.status(403).json('User not valid')
+//     }
+
+//     if (!['hr', 'employee'].includes(req.session.user.role)) {
+//         for (const file of uploadedFiles) {
+//             await deleteFile(file.path, fs)
+//         }
+//         return res.status(403).json('Unauthorized access')
+//     }
+
+//     try {
+//         const parsedTimesheets = JSON.parse(timesheets)
+    
+//         const insertedIds = []
+//         const movedFiles = []
+
+//         for (let i = 0; i < parsedTimesheets.length; i++) {
+//             const timesheet = parsedTimesheets[i]
+//             const file = uploadedFiles[i]
+
+//             await timesheetValidation.validate(timesheet, { abortEarly: false })
+
+//             if (file && file.size > 5 * 1024 * 1024) {
+//                 throw new Error(`File size exceeds 5MB for record ${i + 1}`)
+//             }
+
+//             const { projectId, task, hoursWorked, workDate } = timesheet;
+//             const insertResult = await mysqlQuery(/*sql*/`
+//                 INSERT INTO timesheets (projectId, userId, task, hoursWorked, workDate)
+//                 VALUES (?, ?, ?, ?, ?)`,
+//                 [projectId, userId, task, hoursWorked, workDate], mysqlClient
+//             )
+
+//             if (insertResult.affectedRows === 0) {
+//                 throw new Error(`Insert failed for record ${i + 1}`)
+//             }
+
+//             const timesheetId = insertResult.insertId
+//             insertedIds.push(timesheetId)
+
+//             if (file) {
+//                 const originalDir = path.dirname(file.path)
+//                 const ext = path.extname(file.originalname)
+//                 const filename = `${timesheetId}_${Date.now()}${ext}`
+//                 const newPath = path.join(originalDir, filename)
+
+//                 await new Promise((resolve, reject) => {
+//                     fs.rename(file.path, newPath, (err) => {
+//                         if (err) return reject(err)
+//                         movedFiles.push(newPath)
+//                         resolve()
+//                     })
+//                 })
+
+//                 const updateResult = await mysqlQuery(/*sql*/`
+//                     UPDATE timesheets SET documentImage = ? WHERE timesheetId = ?`,
+//                     [filename, timesheetId], mysqlClient
+//                 )
+
+//                 if (updateResult.affectedRows === 0) {
+//                     throw new Error(`Image update failed for record ${i + 1}`)
+//                 }
+//             }
+//         }
+
+//         res.status(200).json('Successfully submitted...')
+
+//     } catch (error) {
+//         for (const file of uploadedFiles) {
+//             if (file?.path) await deleteFile(file.path, fs)
+//         }
+//     console.log(error)
+//         req.log.error(error)
+//         res.status(500).json(error)
+//     } 
+// }
+
 async function createTimesheet(req, res) {
     const mysqlClient = req.app.mysqlClient
     const { timesheets } = req.body
     const userId = req.session.user.userId
+    const role = req.session.user.role
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
+    console.log(uploadedFiles)
 
+    const insertedIds = []
+    const movedFiles = []
+
+    // 1. User validation
     if (req.body.userId && req.body.userId !== userId) {
-        for (const file of uploadedFiles) {
-            await deleteFile(file.path, fs);
-        }
-        return res.status(403).json('User not valid');
+        await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
+        return res.status(403).json({ message: 'User not valid' })
     }
 
-    if (!['hr', 'employee'].includes(req.session.user.role)) {
-        for (const file of uploadedFiles) {
-            await deleteFile(file.path, fs)
-        }
-        return res.status(403).json('Unauthorized access')
+    if (!['hr', 'employee'].includes(role)) {
+        await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
+        return res.status(403).json({ message: 'Unauthorized access' })
     }
 
     try {
+        // 2. Parse timesheet data
         const parsedTimesheets = JSON.parse(timesheets)
-    
-        const insertedIds = []
-        const movedFiles = []
 
         for (let i = 0; i < parsedTimesheets.length; i++) {
             const timesheet = parsedTimesheets[i]
             const file = uploadedFiles[i]
 
-            await timesheetValidation.validate(timesheet, { abortEarly: false })
-
-            if (file && file.size > 5 * 1024 * 1024) {
-                throw new Error(`File size exceeds 5MB for record ${i + 1}`)
+            // 3. Validation
+            try {
+                await timesheetValidation.validate(timesheet, { abortEarly: false })
+            } catch (validationErr) {
+                throw new Error(`Validation failed at record ${i + 1}: ${validationErr.errors.join(', ')}`)
             }
 
-            const { projectId, task, hoursWorked, workDate } = timesheet;
+            // 4. File size check
+            if (file && file.size > 5 * 1024 * 1024) {
+                throw new Error(`File size exceeds 5MB at record ${i + 1}`)
+            }
+
+            const { projectId, task, hoursWorked, workDate } = timesheet
+
+            // 5. Insert into DB
             const insertResult = await mysqlQuery(/*sql*/`
                 INSERT INTO timesheets (projectId, userId, task, hoursWorked, workDate)
                 VALUES (?, ?, ?, ?, ?)`,
-                [projectId, userId, task, hoursWorked, workDate], mysqlClient
+                [projectId, userId, task, hoursWorked, workDate],
+                mysqlClient
             )
 
             if (insertResult.affectedRows === 0) {
-                throw new Error(`Insert failed for record ${i + 1}`)
+                throw new Error(`Insert failed at record ${i + 1}`)
             }
 
             const timesheetId = insertResult.insertId
             insertedIds.push(timesheetId)
 
+            // 6. Save uploaded file
             if (file) {
-                const originalDir = path.dirname(file.path)
                 const ext = path.extname(file.originalname)
                 const filename = `${timesheetId}_${Date.now()}${ext}`
-                const newPath = path.join(originalDir, filename)
+                const newPath = path.join(path.dirname(file.path), filename)
 
                 await new Promise((resolve, reject) => {
-                    fs.rename(file.path, newPath, (err) => {
+                    fs.rename(file.path, newPath, err => {
                         if (err) return reject(err)
                         movedFiles.push(newPath)
                         resolve()
                     })
                 })
 
+                // 7. Update DB with image name
                 const updateResult = await mysqlQuery(/*sql*/`
                     UPDATE timesheets SET documentImage = ? WHERE timesheetId = ?`,
-                    [filename, timesheetId], mysqlClient
+                    [filename, timesheetId],
+                    mysqlClient
                 )
 
                 if (updateResult.affectedRows === 0) {
-                    throw new Error(`Image update failed for record ${i + 1}`)
+                    throw new Error(`Image update failed at record ${i + 1}`)
                 }
             }
         }
 
-        res.status(200).json('Successfully submitted...')
+        // 8. Success
+        res.status(200).json({
+            message: 'Successfully submitted',
+            insertedIds
+        })
 
     } catch (error) {
+        // 9. Delete uploaded temp files
         for (const file of uploadedFiles) {
-            if (file?.path) await deleteFile(file.path, fs)
+            if (file?.path && fs.existsSync(file.path)) {
+                await deleteFile(file.path, fs)
+            }
         }
-        res.status(400).json(error)
-    } 
+
+        // 10. Rollback DB records
+        if (insertedIds.length > 0) {
+            await mysqlQuery(
+                `DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
+                insertedIds,
+                mysqlClient
+            )
+        }
+
+        // 11. Delete moved files
+        for (const filePath of movedFiles) {
+            if (fs.existsSync(filePath)) {
+                fs.unlinkSync(filePath)
+            }
+        }
+
+        req.log?.error?.(error)
+        res.status(500).json({ message: error.message || 'Something went wrong' })
+    }
 }
 
 async function readTimeSheetDocumentById(req, res) {
@@ -277,7 +399,7 @@ async function readTimeSheetDocumentById(req, res) {
         const filePath = path.join(baseDir, fileName)
 
         if (!fs.existsSync(filePath)) {
-            return res.status(404).json("File does not exist on server")
+            return res.status(404).json("File does not exist")
         }
 
         const mimeType = mime.lookup(filePath) || 'application/octet-stream'
@@ -286,11 +408,10 @@ async function readTimeSheetDocumentById(req, res) {
 
         fs.createReadStream(filePath).pipe(res)
     } catch (error) {
-        req.log?.error?.(error)
+        req.log.error(error)
         res.status(500).json("Internal server error")
     }
 }
-
 
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
