@@ -13,9 +13,9 @@ const ALLOWED_UPDATE_KEYS = [
 ]
 
 const projectValidation = yup.object().shape({
-    projectName: yup.string().min(2, 'Project name must be at least 2 characters long'),
-    clientName: yup.string().min(2, 'Client name must be at least 2 characters long'),
-    managerId: yup.number().integer('Manager ID must be a number').positive('Manager ID must be positive'),
+    projectName: yup.string().min(2, 'Project Name must be at least 2 characters long').required('Project Name is required'),
+    clientName: yup.string().min(2, 'Client Name must be at least 2 characters long').required('Client Name is required'),
+    managerId: yup.number().integer('Manager Name must be a number').positive('Manager Name must be positive').required('Manager Name is required'),
     employeeIds: yup.array()
         .of(
             yup.number()
@@ -580,11 +580,6 @@ async function readProjectHistorys(req, res) {
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
     const projectName = body.projectName
-    try {
-        await projectValidation.validate(body, { abortEarly: false })
-    } catch (err) {
-        errors.push(...err.errors)
-    }
 
     try {
         let query, params
@@ -612,6 +607,12 @@ async function validatePayload(body, isUpdate = false, projectId = null, mysqlCl
 
         if (validateProjectName.count > 0) {
             errors.push('Project Name already exists')
+        }
+
+        try {
+            await projectValidation.validate(body, { abortEarly: false })
+        } catch (err) {
+            errors.push(...err.errors)
         }
     } catch (error) {
         return ['Something went wrong. Please try again later']

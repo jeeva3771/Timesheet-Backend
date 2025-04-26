@@ -13,6 +13,21 @@ const storage = multer.diskStorage({
         cb(null, `${Date.now()}-${file.originalname}`)
     }
 })
+const validHours = [
+    1, 1.25, 1.5, 1.75,
+    2, 2.25, 2.5, 2.75,
+    3, 3.25, 3.5, 3.75,
+    4, 4.25, 4.5, 4.75,
+    5, 5.25, 5.5, 5.75,
+    6, 6.25, 6.5, 6.75,
+    7, 7.25, 7.5, 7.75,
+    8, 8.25, 8.5, 8.75,
+    9, 9.25, 9.5, 9.75,
+    10, 10.25, 10.5, 10.75,
+    11, 11.25, 11.5, 11.75,
+    12
+  ];
+  
 
 const fileFilter = (req, file, cb) => {
     const allowedMimeTypes = [
@@ -34,26 +49,21 @@ const fileFilter = (req, file, cb) => {
 const upload = multer({ storage, fileFilter })
 const multerMiddleware = upload.array('reportdocuploads')
 
+
 const timesheetValidation = yup.object().shape({
     projectId: yup.number()
         .integer('Project ID must be a number')
         .positive('Project ID must be positive')
-        .required('Project ID is required'),
+        .required('Project is required'),
 
     task: yup.string()
-        .min(3, 'Task must be at least 3 characters long')
-        .required('Task is required'),
+        .required('Task is required')
+        .min(3, 'Task must be at least 3 characters long'),
 
     hoursWorked: yup.number()
-        .min(0.25, 'Hours worked must be at least 0.25')
-        .max(12, 'Hours worked cannot exceed 12')
-        .test(
-            'is-quarter-hour', 
-            'Hours worked must be in increments of 0.25 (e.g., 0.25, 0.50, 0.75, 1, 1.25, etc.)', 
-            value => value % 0.25 === 0
-        )
-        .required('Hours worked is required'),
-
+        .required('Hours is required')
+        .oneOf(validHours, 'Invalid hours entered'),
+    
     workDate: yup.date()
         .typeError('Work date must be a valid date')
         .test(
@@ -84,12 +94,12 @@ async function readTimesheets(req, res) {
     let queryParameters = []
 
     if (userId) {
-        whereConditions.push(`ur.userId = ?`)
+        whereConditions.push(`t.userId = ?`)
         queryParameters.push(userId)
     }
     
     if (projectId) {
-        whereConditions.push(`p.projectId = ?`)
+        whereConditions.push(`t.projectId = ?`)
         queryParameters.push(projectId)
     }
 
@@ -147,9 +157,20 @@ async function readTimesheets(req, res) {
 
         function adjustHours(value) {
             const adjustments = {
-                1.25: 1.15, 1.50: 1.30, 1.75: 1.45, 2.00: 2.00,
-                8.25: 8.15, 8.50: 8.30, 8.75: 8.45, 9.00: 9.00
+                1.00: 1, 1.25: 1.15, 1.50: 1.30, 1.75: 1.45, 
+                2.00: 2, 2.25: 2.15, 2.50: 2.30, 2.75: 2.45, 
+                3.00: 3, 3.25: 3.15, 3.50: 3.30, 3.75: 3.45, 
+                4.00: 4, 4.25: 4.15, 4.50: 4.30, 4.75: 4.45, 
+                5.00: 5, 5.25: 5.15, 5.50: 5.30, 5.75: 5.45, 
+                6.00: 6, 6.25: 6.15, 6.50: 6.30, 6.75: 6.45, 
+                7.00: 7, 7.25: 7.15, 7.50: 7.30, 7.75: 7.45, 
+                8.00: 8, 8.25: 8.15, 8.50: 8.30, 8.75: 8.45, 
+                9.00: 9, 9.25: 9.15, 9.50: 9.30, 9.75: 9.45, 
+                10.00: 10, 10.25: 10.15, 10.50: 10.30, 10.75: 10.45, 
+                11.00: 11, 11.25: 11.15, 11.50: 11.30, 11.75: 11.45, 
+                12.00: 12
             }
+            
             return adjustments[value] !== undefined ? adjustments[value] : value
         }
 
@@ -168,96 +189,9 @@ async function readTimesheets(req, res) {
 
     } catch (error) {
         req.log.error(error)
-        res.status(500).json(error)
+        res.status(500).json('Something went wrong. Please try again later.')
     }
 }
-
-// async function createTimesheet(req, res) {
-//     const mysqlClient = req.app.mysqlClient
-//     const { timesheets } = req.body
-//     const userId = req.session.user.userId
-//     const uploadedFiles = Array.isArray(req.files) ? req.files : []
-
-//     if (req.body.userId && req.body.userId !== userId) {
-//         for (const file of uploadedFiles) {
-//             await deleteFile(file.path, fs)
-//         }
-//         return res.status(403).json('User not valid')
-//     }
-
-//     if (!['hr', 'employee'].includes(req.session.user.role)) {
-//         for (const file of uploadedFiles) {
-//             await deleteFile(file.path, fs)
-//         }
-//         return res.status(403).json('Unauthorized access')
-//     }
-
-//     try {
-//         const parsedTimesheets = JSON.parse(timesheets)
-    
-//         const insertedIds = []
-//         const movedFiles = []
-
-//         for (let i = 0; i < parsedTimesheets.length; i++) {
-//             const timesheet = parsedTimesheets[i]
-//             const file = uploadedFiles[i]
-
-//             await timesheetValidation.validate(timesheet, { abortEarly: false })
-
-//             if (file && file.size > 5 * 1024 * 1024) {
-//                 throw new Error(`File size exceeds 5MB for record ${i + 1}`)
-//             }
-
-//             const { projectId, task, hoursWorked, workDate } = timesheet;
-//             const insertResult = await mysqlQuery(/*sql*/`
-//                 INSERT INTO timesheets (projectId, userId, task, hoursWorked, workDate)
-//                 VALUES (?, ?, ?, ?, ?)`,
-//                 [projectId, userId, task, hoursWorked, workDate], mysqlClient
-//             )
-
-//             if (insertResult.affectedRows === 0) {
-//                 throw new Error(`Insert failed for record ${i + 1}`)
-//             }
-
-//             const timesheetId = insertResult.insertId
-//             insertedIds.push(timesheetId)
-
-//             if (file) {
-//                 const originalDir = path.dirname(file.path)
-//                 const ext = path.extname(file.originalname)
-//                 const filename = `${timesheetId}_${Date.now()}${ext}`
-//                 const newPath = path.join(originalDir, filename)
-
-//                 await new Promise((resolve, reject) => {
-//                     fs.rename(file.path, newPath, (err) => {
-//                         if (err) return reject(err)
-//                         movedFiles.push(newPath)
-//                         resolve()
-//                     })
-//                 })
-
-//                 const updateResult = await mysqlQuery(/*sql*/`
-//                     UPDATE timesheets SET documentImage = ? WHERE timesheetId = ?`,
-//                     [filename, timesheetId], mysqlClient
-//                 )
-
-//                 if (updateResult.affectedRows === 0) {
-//                     throw new Error(`Image update failed for record ${i + 1}`)
-//                 }
-//             }
-//         }
-
-//         res.status(200).json('Successfully submitted...')
-
-//     } catch (error) {
-//         for (const file of uploadedFiles) {
-//             if (file?.path) await deleteFile(file.path, fs)
-//         }
-//     console.log(error)
-//         req.log.error(error)
-//         res.status(500).json(error)
-//     } 
-// }
 
 async function createTimesheet(req, res) {
     const mysqlClient = req.app.mysqlClient
@@ -265,7 +199,6 @@ async function createTimesheet(req, res) {
     const userId = req.session.user.userId
     const role = req.session.user.role
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
-    console.log(uploadedFiles)
 
     const insertedIds = []
     const movedFiles = []
@@ -273,12 +206,12 @@ async function createTimesheet(req, res) {
     // 1. User validation
     if (req.body.userId && req.body.userId !== userId) {
         await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
-        return res.status(403).json({ message: 'User not valid' })
+        return res.status(403).json('User not valid' )
     }
 
     if (!['hr', 'employee'].includes(role)) {
         await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
-        return res.status(403).json({ message: 'Unauthorized access' })
+        return res.status(403).json('Unauthorized access')
     }
 
     try {
@@ -293,12 +226,12 @@ async function createTimesheet(req, res) {
             try {
                 await timesheetValidation.validate(timesheet, { abortEarly: false })
             } catch (validationErr) {
-                throw new Error(`Validation failed at record ${i + 1}: ${validationErr.errors.join(', ')}`)
+                throw new Error(`Report ${i + 1}: ${validationErr.errors.join(', ')}`)
             }
 
             // 4. File size check
             if (file && file.size > 5 * 1024 * 1024) {
-                throw new Error(`File size exceeds 5MB at record ${i + 1}`)
+                throw new Error(`File size exceeds 5MB at report ${i + 1}`)
             }
 
             const { projectId, task, hoursWorked, workDate } = timesheet
@@ -312,7 +245,7 @@ async function createTimesheet(req, res) {
             )
 
             if (insertResult.affectedRows === 0) {
-                throw new Error(`Insert failed at record ${i + 1}`)
+                throw new Error(`Insert failed at report ${i + 1}`)
             }
 
             const timesheetId = insertResult.insertId
@@ -340,16 +273,13 @@ async function createTimesheet(req, res) {
                 )
 
                 if (updateResult.affectedRows === 0) {
-                    throw new Error(`Image update failed at record ${i + 1}`)
+                    throw new Error(`Image update failed at report ${i + 1}`)
                 }
             }
         }
 
         // 8. Success
-        res.status(200).json({
-            message: 'Successfully submitted',
-            insertedIds
-        })
+        res.status(201).json( 'Successfully submitted...')
 
     } catch (error) {
         // 9. Delete uploaded temp files
@@ -359,7 +289,7 @@ async function createTimesheet(req, res) {
             }
         }
 
-        // 10. Rollback DB records
+        // 10. Rollback DB reports
         if (insertedIds.length > 0) {
             await mysqlQuery(
                 /*sql*/`DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
@@ -376,7 +306,7 @@ async function createTimesheet(req, res) {
         }
 
         req.log?.error?.(error)
-        res.status(500).json({ message: error.message || 'Something went wrong' })
+        res.status(500).json(error.message || 'Something went wrong. Please try again later.' )
     }
 }
 
@@ -409,7 +339,7 @@ async function readTimeSheetDocumentById(req, res) {
         fs.createReadStream(filePath).pipe(res)
     } catch (error) {
         req.log.error(error)
-        res.status(500).json("Internal server error")
+        res.status(500).json("Something went wrong. Please try again later.")
     }
 }
 

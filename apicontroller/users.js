@@ -42,7 +42,7 @@ const mainDetailsUserValidation = yup.object().shape({
     name: yup.string().min(2, 'Name is invalid').required('Name is required'), 
     dob: yup
         .date()
-        .max(subYears(new Date(), 18), 'You must be at least 18 years old')
+        .max(subYears(new Date(), 18), 'DOB must be at least 18 years old')
         .required('DOB is required'),
     emailId: yup.string().email('Invalid email format').required('Email is required'),
 })
@@ -943,38 +943,56 @@ async function validatePayload(fileValidationError, body, isUpdate = false, user
 }
 
 async function validateMainPayload(body, isUpdate = false, userId = null, mysqlClient) {
-    const { emailId } = body
+    const { emailId, name } = body
     let errors = []
 
     try {
-        await mainDetailsUserValidation.validate(body, { abortEarly: false })
-    } catch (err) { 
-        errors.push(...err.errors)
-    }
-
-    try {
-        let query, params
+        let emailQuery, emailParams, nameQuery, nameParams
 
         if (isUpdate) {
-            query = /*sql*/`
+            emailQuery = /*sql*/`
                 SELECT 
                     COUNT(*) AS count 
                 FROM users 
                 WHERE emailId = ? AND
                     userId != ? AND 
                     deletedAt IS NULL`
-            params = [emailId, userId]
+            emailParams = [emailId, userId]
         } else {
-            query = /*sql*/`
+            emailQuery = /*sql*/`
                 SELECT 
                     COUNT(*) AS count 
                 FROM users 
                 WHERE emailId = ? AND
                     deletedAt IS NULL`
-            params = [emailId]
+            emailParams = [emailId]
         }
 
-        const [validateEmailId] = await mysqlQuery(query, params, mysqlClient)
+        if (isUpdate) {
+            nameQuery = /*sql*/`
+                SELECT 
+                    COUNT(*) AS count 
+                FROM users 
+                WHERE name = ? AND
+                    userId != ? AND 
+                    deletedAt IS NULL`
+            nameParams = [name, userId]
+        } else {
+            nameQuery = /*sql*/`
+                SELECT 
+                    COUNT(*) AS count 
+                FROM users 
+                WHERE name = ? AND
+                    deletedAt IS NULL`
+            nameParams = [name]
+        }
+
+        const [validateName] = await mysqlQuery(nameQuery, nameParams, mysqlClient)
+        const [validateEmailId] = await mysqlQuery(emailQuery, emailParams, mysqlClient)
+
+        if (validateName.count > 0) {
+            errors.push('Name already exists')
+        }
 
         if (validateEmailId.count > 0) {
             errors.push('Email already exists')
@@ -982,6 +1000,13 @@ async function validateMainPayload(body, isUpdate = false, userId = null, mysqlC
     } catch (error) {
         return ['Something went wrong. Please try again later']
     }
+
+    try {
+        await mainDetailsUserValidation.validate(body, { abortEarly: false })
+    } catch (err) { 
+        errors.push(...err.errors)
+    }
+    
     return errors
 }
 
