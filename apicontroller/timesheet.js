@@ -5,14 +5,14 @@ const fs = require('fs')
 const mime = require('mime-types') // Make sure to install this: npm install mime-types
 const yup = require('yup')
 
-const storage = multer.diskStorage({
-    destination: (req, file, cb) => {
-        cb(null,  path.join(__dirname, '..', 'reportdocuploads')) 
-    },
-    filename: (req, file, cb) => {
-        cb(null, `${Date.now()}-${file.originalname}`)
-    }
-})
+// const storage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         cb(null,  path.join(__dirname, '..', 'reportdocuploads')) 
+//     },
+//     filename: (req, file, cb) => {
+//         cb(null, `${req.id}-${Date.now()}-${file.originalname}`)
+//     }
+// })
 const validHours = [
     1, 1.25, 1.5, 1.75,
     2, 2.25, 2.5, 2.75,
@@ -26,7 +26,22 @@ const validHours = [
     10, 10.25, 10.5, 10.75,
     11, 11.25, 11.5, 11.75,
     12
-  ];
+]
+
+const adjustments = {
+    1.00: 1, 1.25: 1.15, 1.50: 1.30, 1.75: 1.45, 
+    2.00: 2, 2.25: 2.15, 2.50: 2.30, 2.75: 2.45, 
+    3.00: 3, 3.25: 3.15, 3.50: 3.30, 3.75: 3.45, 
+    4.00: 4, 4.25: 4.15, 4.50: 4.30, 4.75: 4.45, 
+    5.00: 5, 5.25: 5.15, 5.50: 5.30, 5.75: 5.45, 
+    6.00: 6, 6.25: 6.15, 6.50: 6.30, 6.75: 6.45, 
+    7.00: 7, 7.25: 7.15, 7.50: 7.30, 7.75: 7.45, 
+    8.00: 8, 8.25: 8.15, 8.50: 8.30, 8.75: 8.45, 
+    9.00: 9, 9.25: 9.15, 9.50: 9.30, 9.75: 9.45, 
+    10.00: 10, 10.25: 10.15, 10.50: 10.30, 10.75: 10.45, 
+    11.00: 11, 11.25: 11.15, 11.50: 11.30, 11.75: 11.45, 
+    12.00: 12
+}
   
 
 const fileFilter = (req, file, cb) => {
@@ -46,10 +61,12 @@ const fileFilter = (req, file, cb) => {
     }
 }
 
-const upload = multer({ storage, fileFilter })
-const multerMiddleware = upload.array('reportdocuploads')
+// const upload = multer({ storage, fileFilter })
+// const multerMiddleware = upload.array('reportdocuploads')
 
-
+const storage = multer.memoryStorage(); // or diskStorage
+const upload = multer({ storage: storage });
+const multerMiddleware = upload.any()
 const timesheetValidation = yup.object().shape({
     projectId: yup.number()
         .integer('Project ID must be a number')
@@ -77,6 +94,11 @@ const timesheetValidation = yup.object().shape({
         )
         .required('Work date is required')
 })
+
+
+function adjustHours(value) {
+    return adjustments[value] !== undefined ? adjustments[value] : value
+}
 
 async function readTimesheets(req, res) {  
     const mysqlClient = req.app.mysqlClient
@@ -155,25 +177,6 @@ async function readTimesheets(req, res) {
             mysqlQuery(totalHoursQuery, queryParameters, mysqlClient)
         ])
 
-        function adjustHours(value) {
-            const adjustments = {
-                1.00: 1, 1.25: 1.15, 1.50: 1.30, 1.75: 1.45, 
-                2.00: 2, 2.25: 2.15, 2.50: 2.30, 2.75: 2.45, 
-                3.00: 3, 3.25: 3.15, 3.50: 3.30, 3.75: 3.45, 
-                4.00: 4, 4.25: 4.15, 4.50: 4.30, 4.75: 4.45, 
-                5.00: 5, 5.25: 5.15, 5.50: 5.30, 5.75: 5.45, 
-                6.00: 6, 6.25: 6.15, 6.50: 6.30, 6.75: 6.45, 
-                7.00: 7, 7.25: 7.15, 7.50: 7.30, 7.75: 7.45, 
-                8.00: 8, 8.25: 8.15, 8.50: 8.30, 8.75: 8.45, 
-                9.00: 9, 9.25: 9.15, 9.50: 9.30, 9.75: 9.45, 
-                10.00: 10, 10.25: 10.15, 10.50: 10.30, 10.75: 10.45, 
-                11.00: 11, 11.25: 11.15, 11.50: 11.30, 11.75: 11.45, 
-                12.00: 12
-            }
-            
-            return adjustments[value] !== undefined ? adjustments[value] : value
-        }
-
         const updatedTimesheets = timesheets.map(row => ({
             ...row,
             hoursWorked: adjustHours(row.hoursWorked)
@@ -188,6 +191,8 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
+        console.log('error')
+        console.log(error)
         req.log.error(error)
         res.status(500).json('Something went wrong. Please try again later.')
     }
@@ -199,6 +204,7 @@ async function createTimesheet(req, res) {
     const userId = req.session.user.userId
     const role = req.session.user.role
     const uploadedFiles = Array.isArray(req.files) ? req.files : []
+    console.log({...req.body}, 'body')
 
     const insertedIds = []
     const movedFiles = []
@@ -218,7 +224,7 @@ async function createTimesheet(req, res) {
 
     try {
         // 2. Parse timesheet data
-        const parsedTimesheets = JSON.parse(timesheets)
+        const parsedTimesheets = req.body.report
 
         for (let i = 0; i < parsedTimesheets.length; i++) {
             const timesheet = parsedTimesheets[i]
@@ -310,11 +316,132 @@ async function createTimesheet(req, res) {
         res.status(201).json( 'Successfully submitted...')
 
     } catch (error) {
-        req.log?.error?.(error)
+        console.log(error)
+        req.log.error(error)
         res.status(500).json(error || 'Something went wrong. Please try again later.')
     }
 }
+// async function createTimesheet(req, res) {
+//     const mysqlClient = req.app.mysqlClient
+//     const { timesheets } = req.body
+//     const userId = req.session.user.userId
+//     const role = req.session.user.role
+//     const uploadedFiles = Array.isArray(req.files) ? req.files : []
 
+//     const insertedIds = []
+//     const movedFiles = []
+//     const errors = []
+
+
+//     // 1. User validation
+//     if (req.body.userId && req.body.userId !== userId) {
+//         await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
+//         return res.status(403).json('User not valid' )
+//     }
+
+//     if (!['hr', 'employee'].includes(role)) {
+//         await Promise.all(uploadedFiles.map(file => deleteFile(file.path, fs)))
+//         return res.status(403).json('Unauthorized access')
+//     }
+
+//     try {
+//         // 2. Parse timesheet data
+//         const parsedTimesheets = JSON.parse(timesheets)
+
+//         for (let i = 0; i < parsedTimesheets.length; i++) {
+//             const timesheet = parsedTimesheets[i]
+//             const file = uploadedFiles[i] || null
+
+//             // 3. Validation
+//             try {
+//                 await timesheetValidation.validate(timesheet, { abortEarly: false })
+//             } catch (validationErr) {
+//                 errors.push(` Report ${i + 1}: ${validationErr.errors.join(', ')}`)
+//             }
+
+//             // 4. File size check
+//             if (file && file.size > 0 && file.size > 5 * 1024 * 1024) {
+//                 errors.push(`File size exceeds 5MB at report ${i + 1}`)
+//             }
+
+//             const { projectId, task, hoursWorked, workDate } = timesheet
+
+//             // 5. Insert into DB
+//             const insertResult = await mysqlQuery(/*sql*/`
+//                 INSERT INTO timesheets (projectId, userId, task, hoursWorked, workDate)
+//                 VALUES (?, ?, ?, ?, ?)`,
+//                 [projectId, userId, task, hoursWorked, workDate],
+//                 mysqlClient
+//             )
+
+//             if (insertResult.affectedRows === 0) {
+//                 errors.push(`Insert failed at report ${i + 1}`)
+//             }
+
+//             const timesheetId = insertResult.insertId
+//             insertedIds.push(timesheetId)
+
+//             // 6. Save uploaded file
+//             if (file && file.size > 0) {
+//                 const ext = path.extname(file.originalname)
+//                 const filename = `${timesheetId}_${Date.now()}${ext}`
+//                 const newPath = path.join(path.dirname(file.path), filename)
+
+//                 await new Promise((resolve, reject) => {
+//                     fs.rename(file.path, newPath, err => {
+//                         if (err) return reject(err)
+//                         movedFiles.push(newPath)
+//                         resolve()
+//                     })
+//                 })
+
+//                 // 7. Update DB with image name
+//                 const updateResult = await mysqlQuery(/*sql*/`
+//                     UPDATE timesheets SET documentImage = ? WHERE timesheetId = ?`,
+//                     [filename, timesheetId],
+//                     mysqlClient
+//                 )
+
+//                 if (updateResult.affectedRows === 0) {
+//                     errors.push(`Image update failed at report ${i + 1}`)
+//                 }
+//             }
+//         }
+
+//         if (errors.length > 0) {
+//             for (const file of uploadedFiles) {
+//                 if (file?.path && fs.existsSync(file.path)) {
+//                     await deleteFile(file.path, fs)
+//                 }
+//             }
+    
+//             // 10. Rollback DB reports
+//             if (insertedIds.length > 0) {
+//                 await mysqlQuery(
+//                     /*sql*/`DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
+//                     insertedIds,
+//                     mysqlClient
+//                 )
+//             }
+    
+//             // 11. Delete moved files
+//             for (const filePath of movedFiles) {
+//                 if (fs.existsSync(filePath)) {
+//                     fs.unlinkSync(filePath)
+//                 }
+//             }
+    
+//             return res.status(400).send(errors)
+//         }
+
+//         // 8. Success
+//         res.status(201).json( 'Successfully submitted...')
+
+//     } catch (error) {
+//         req.log?.error?.(error)
+//         res.status(500).json(error || 'Something went wrong. Please try again later.')
+//     }
+// }
 async function readTimeSheetDocumentById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const timesheetId = req.params.timesheetId

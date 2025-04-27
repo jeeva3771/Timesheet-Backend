@@ -26,6 +26,28 @@ const logger = pino({
     level: 'info'
 })
 
+app.use(
+    pinoHttp({
+        logger,
+        customLogLevel: (res, err) => (res.statusCode >= 500 ? 'error' : 'info'),
+        customSuccessMessage: (req, res) => `Request to ${req.url} processed`,
+        genReqId: (req) => {
+            req.startTime = Date.now()
+            return req.id || uuidv4()
+        },
+        customAttributeKeys: {
+            reqId: 'requestId',
+        },
+    })
+)
+
+app.mysqlClient = mysql.createConnection({
+    host: process.env.DB_HOST,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+    database: process.env.DB_NAME,
+})  
+
 app.use(express.json())
 app.use(cookieParser())
 
@@ -42,9 +64,10 @@ app.use(session({
     store: new FileStore({
         path: './sessions',
         retries: 0,
+        ttl: 1000 * 60 * 60 * 24
     }),
     secret: process.env.SESSION_SECRET,
-    resave: false,
+    resave: true,
     saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 * 60 * 24, // 1 day
@@ -52,20 +75,7 @@ app.use(session({
     }
 }))
 
-app.use(
-    pinoHttp({
-        logger,
-        customLogLevel: (res, err) => (res.statusCode >= 500 ? 'error' : 'info'),
-        customSuccessMessage: (req, res) => `Request to ${req.url} processed`,
-        genReqId: (req) => {
-            req.startTime = Date.now()
-            return req.id || uuidv4()
-        },
-        customAttributeKeys: {
-            reqId: 'requestId',
-        },
-    })
-)
+
 
 // Middleware to log the total process time
 app.use((req, res, next) => {
@@ -76,12 +86,7 @@ app.use((req, res, next) => {
     next()
 })
 
-app.mysqlClient = mysql.createConnection({
-    host: process.env.DB_HOST,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
-    database: process.env.DB_NAME,
-})    
+  
 
 const pageUsersSessionExclude = [
     '/login/',
