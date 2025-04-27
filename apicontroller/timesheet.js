@@ -442,6 +442,51 @@ async function createTimesheet(req, res) {
 //         res.status(500).json(error || 'Something went wrong. Please try again later.')
 //     }
 // }
+
+
+// const storage = multer.diskStorage({
+//     destination: (req, file, cb) => {
+//         cb(null,  path.join(__dirname, '..', 'reportdocuploads')) 
+//     },
+//     filename: (req, file, cb) => {
+//         cb(null, `${Date.now()}-${file.originalname}`)
+//     }
+// })
+// const validHours = [
+//     1, 1.25, 1.5, 1.75,
+//     2, 2.25, 2.5, 2.75,
+//     3, 3.25, 3.5, 3.75,
+//     4, 4.25, 4.5, 4.75,
+//     5, 5.25, 5.5, 5.75,
+//     6, 6.25, 6.5, 6.75,
+//     7, 7.25, 7.5, 7.75,
+//     8, 8.25, 8.5, 8.75,
+//     9, 9.25, 9.5, 9.75,
+//     10, 10.25, 10.5, 10.75,
+//     11, 11.25, 11.5, 11.75,
+//     12
+//   ];
+  
+
+// const fileFilter = (req, file, cb) => {
+//     const allowedMimeTypes = [
+//         'image/jpeg', 
+//         'image/png', 
+//         'image/jpg',
+//         'application/vnd.ms-excel', 
+//         'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+//     ]
+
+//     if (allowedMimeTypes.includes(file.mimetype)) {
+//         cb(null, true)
+//     } else {
+//         req.fileValidationError = 'Invalid file type. Only JPEG, PNG, JPG, and Excel (XLS/XLSX) files are allowed.'
+//         cb(null, false)
+//     }
+// }
+
+// const upload = multer({ storage, fileFilter })
+// const multerMiddleware = upload.array('reportdocuploads')
 async function readTimeSheetDocumentById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const timesheetId = req.params.timesheetId
