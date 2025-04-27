@@ -202,6 +202,8 @@ async function createTimesheet(req, res) {
 
     const insertedIds = []
     const movedFiles = []
+    const errors = []
+
 
     // 1. User validation
     if (req.body.userId && req.body.userId !== userId) {
@@ -220,18 +222,18 @@ async function createTimesheet(req, res) {
 
         for (let i = 0; i < parsedTimesheets.length; i++) {
             const timesheet = parsedTimesheets[i]
-            const file = uploadedFiles[i]
+            const file = uploadedFiles[i] || null
 
             // 3. Validation
             try {
                 await timesheetValidation.validate(timesheet, { abortEarly: false })
             } catch (validationErr) {
-                throw new Error(`Report ${i + 1}: ${validationErr.errors.join(', ')}`)
+                errors.push(` Report ${i + 1}: ${validationErr.errors.join(', ')}`)
             }
 
             // 4. File size check
-            if (file && file.size > 5 * 1024 * 1024) {
-                throw new Error(`File size exceeds 5MB at report ${i + 1}`)
+            if (file && file.size > 0 && file.size > 5 * 1024 * 1024) {
+                errors.push(`File size exceeds 5MB at report ${i + 1}`)
             }
 
             const { projectId, task, hoursWorked, workDate } = timesheet
@@ -245,14 +247,14 @@ async function createTimesheet(req, res) {
             )
 
             if (insertResult.affectedRows === 0) {
-                throw new Error(`Insert failed at report ${i + 1}`)
+                errors.push(`Insert failed at report ${i + 1}`)
             }
 
             const timesheetId = insertResult.insertId
             insertedIds.push(timesheetId)
 
             // 6. Save uploaded file
-            if (file) {
+            if (file && file.size > 0) {
                 const ext = path.extname(file.originalname)
                 const filename = `${timesheetId}_${Date.now()}${ext}`
                 const newPath = path.join(path.dirname(file.path), filename)
@@ -273,40 +275,43 @@ async function createTimesheet(req, res) {
                 )
 
                 if (updateResult.affectedRows === 0) {
-                    throw new Error(`Image update failed at report ${i + 1}`)
+                    errors.push(`Image update failed at report ${i + 1}`)
                 }
             }
+        }
+
+        if (errors.length > 0) {
+            for (const file of uploadedFiles) {
+                if (file?.path && fs.existsSync(file.path)) {
+                    await deleteFile(file.path, fs)
+                }
+            }
+    
+            // 10. Rollback DB reports
+            if (insertedIds.length > 0) {
+                await mysqlQuery(
+                    /*sql*/`DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
+                    insertedIds,
+                    mysqlClient
+                )
+            }
+    
+            // 11. Delete moved files
+            for (const filePath of movedFiles) {
+                if (fs.existsSync(filePath)) {
+                    fs.unlinkSync(filePath)
+                }
+            }
+    
+            return res.status(400).send(errors)
         }
 
         // 8. Success
         res.status(201).json( 'Successfully submitted...')
 
     } catch (error) {
-        // 9. Delete uploaded temp files
-        for (const file of uploadedFiles) {
-            if (file?.path && fs.existsSync(file.path)) {
-                await deleteFile(file.path, fs)
-            }
-        }
-
-        // 10. Rollback DB reports
-        if (insertedIds.length > 0) {
-            await mysqlQuery(
-                /*sql*/`DELETE FROM timesheets WHERE timesheetId IN (${insertedIds.map(() => '?').join(',')})`,
-                insertedIds,
-                mysqlClient
-            )
-        }
-
-        // 11. Delete moved files
-        for (const filePath of movedFiles) {
-            if (fs.existsSync(filePath)) {
-                fs.unlinkSync(filePath)
-            }
-        }
-
         req.log?.error?.(error)
-        res.status(500).json(error.message || 'Something went wrong. Please try again later.' )
+        res.status(500).json(error || 'Something went wrong. Please try again later.')
     }
 }
 
