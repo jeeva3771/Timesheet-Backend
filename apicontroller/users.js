@@ -440,7 +440,7 @@ async function createUser(req, res) {
             }
         }
 
-        res.status(201).json('Successfully created.')
+        res.status(201).json('Successfully created...')
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
@@ -556,7 +556,7 @@ async function editUser(req, res) {
             }
         }
 
-        res.status(200).json('Successfully updated.')
+        res.status(200).json('Successfully updated...')
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)

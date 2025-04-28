@@ -308,7 +308,7 @@ async function createProject(req, res) {
                 return res.status(400).json('Failed to insert history record')
             }
         }
-        res.status(201).json('Successfully created.')
+        res.status(201).json('Successfully created...')
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
@@ -469,7 +469,7 @@ async function editproject(req, res) {
                 return res.status(400).json('Failed to insert history record')
             }
         }
-        res.status(200).json('Successfully updated.')
+        res.status(200).json('Successfully updated...')
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
