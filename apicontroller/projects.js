@@ -187,6 +187,8 @@ async function readProjectNames(req, res) {
     const employee = req.query.employee === 'true'
     const userId = req.query.userId || ''
     const deleted = req.query.deleted === 'true'
+    const condition = req.query.condition === 'true'
+    console.log(condition, 'condtion')
 
     try {
         let projectNamesQuery = /*sql*/`
@@ -219,7 +221,7 @@ async function readProjectNames(req, res) {
 
         // Filter by userId (only if provided)
         if (userId) {
-            projectNamesQuery += ` AND pe.employeeId = ?`
+            projectNamesQuery += ` ${condition ? 'WHERE' : 'AND'} pe.employeeId = ?`
             queryParams.push(userId)
         }
 
