@@ -5,12 +5,12 @@ function mysqlQuery(sql, options, mysqlClient) {
         try {
             mysqlClient.query(sql, options || [], (err, data) => {
                 if (err) {
-                    return reject(err.sqlMessage)
+                    return reject(err)
                 }
                 resolve(data)
             })
         } catch (error) {
-            reject(error.message)
+            reject(error)
         }
     })
 }

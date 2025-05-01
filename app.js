@@ -41,12 +41,15 @@ app.use(
     })
 )
 
-app.mysqlClient = mysql.createConnection({
+app.mysqlClient =  mysql.createPool({
     host: process.env.DB_HOST,
     user: process.env.DB_USER,
     password: process.env.DB_PASSWORD,
     database: process.env.DB_NAME,
-})  
+    waitForConnections: true,
+    connectionLimit: 5,
+    queueLimit: 0
+});
 
 app.use(express.json())
 app.use(cookieParser())
@@ -109,11 +112,12 @@ app.use((req, res, next) => {
     return next()
 })
 
-app.mysqlClient.connect(function (err){
+app.mysqlClient.getConnection(function (err, connection){
     if (err) {
         console.log(err)
     } else {
         console.log('mysql connected')
+        connection.release(); // Always release back to pool
 
         users(app)
         projects(app)

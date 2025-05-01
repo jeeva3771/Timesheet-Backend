@@ -1,0 +1,42 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run: npm start",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "start"
+        ],
+        "port": 9229,
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run: npm run devtest",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "devtest"
+        ],
+        "port": 9229,
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run: npm run prod",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "prod"
+        ],
+        "port": 9229,
+        "console": "integratedTerminal"
+      }
+    ]
+  }
+  
