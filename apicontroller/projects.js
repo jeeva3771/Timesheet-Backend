@@ -459,7 +459,7 @@ async function editproject(req, res) {
 
         if (changes.length > 0) {
             const action = 'edited'
-            const changesText = changes.join(', ')
+            const changesText = changes.join('|| ')
 
             const historyEntry = await mysqlQuery(/*sql*/`
                 INSERT INTO projectHistorys 

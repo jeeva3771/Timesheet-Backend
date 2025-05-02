@@ -185,15 +185,21 @@ const handleTimeSheetUploads = (req, res, next) => {
 
 async function readTimesheets(req, res) {  
     const mysqlClient = req.app.mysqlClient
-    const limit = req.query.limit ? parseInt(req.query.limit) : null
-    const page = req.query.page ? parseInt(req.query.page) : null
-    const offset = limit && page ? (page - 1) * limit : null
+    // const limit = req.query.limit ? parseInt(req.query.limit) : null
+    // const page = req.query.page ? parseInt(req.query.page) : null
+    // const offset = limit && page ? (page - 1) * limit : null
     const orderBy = req.query.orderby || 't.workDate'
     const sort = req.query.sort || 'DESC'
     const fromDate = req.query.fromDate || null
     const toDate = req.query.toDate || null
-    const userId = req.query.userId || null
     const projectId = req.query.projectId || null
+    let userId
+
+    if (!['admin', 'manager'].includes(req.session.user.role)) {
+        userId = req.session.user.userId
+    } else {
+        userId = req.query.userId || null
+    }
 
     let whereConditions = ["1=1"]
     let queryParameters = []
@@ -234,17 +240,17 @@ async function readTimesheets(req, res) {
         ${whereClause}
         ORDER BY ${orderBy} ${sort}`
 
-    if (limit !== null) {
-        timesheetsQuery += ' LIMIT ? OFFSET ?'
-        queryParameters.push(limit, offset)
-    }
+    // if (limit !== null) {
+    //     timesheetsQuery += ' LIMIT ? OFFSET ?'
+    //     queryParameters.push(limit, offset)
+    // }
 
-    const defaultCountQuery = /*sql*/`
-        SELECT COUNT(*) AS totalTimesheetCount
-        FROM timesheets AS t
-        LEFT JOIN users AS ur ON ur.userId = t.userId
-        LEFT JOIN projects p ON p.projectId = t.projectId
-        ${whereClause}`
+    // const defaultCountQuery = /*sql*/`
+    //     SELECT COUNT(*) AS totalTimesheetCount
+    //     FROM timesheets AS t
+    //     LEFT JOIN users AS ur ON ur.userId = t.userId
+    //     LEFT JOIN projects p ON p.projectId = t.projectId
+    //     ${whereClause}`
 
     const totalHoursQuery = /*sql*/`
         SELECT SUM(t.hoursWorked) AS totalHours
@@ -254,9 +260,9 @@ async function readTimesheets(req, res) {
         ${whereClause}`
 
     try {
-        const [timesheets, defaultCount, totalHours] = await Promise.all([
+        const [timesheets, totalHours] = await Promise.all([
             mysqlQuery(timesheetsQuery, queryParameters, mysqlClient),
-            mysqlQuery(defaultCountQuery, queryParameters, mysqlClient),
+            // mysqlQuery(defaultCountQuery, queryParameters, mysqlClient),
             mysqlQuery(totalHoursQuery, queryParameters, mysqlClient)
         ])
 
@@ -269,7 +275,7 @@ async function readTimesheets(req, res) {
 
         res.status(200).json({
             timesheets: updatedTimesheets,
-            totalTimesheetCount: defaultCount[0].totalTimesheetCount,
+            // totalTimesheetCount: defaultCount[0].totalTimesheetCount,
             totalAdjustedHoursWorked: adjustedTotalHours
         })
 
