@@ -49,7 +49,7 @@ app.mysqlClient =  mysql.createPool({
     waitForConnections: true,
     connectionLimit: 5,
     queueLimit: 0
-});
+})
 
 app.use(express.json())
 app.use(cookieParser())
@@ -117,7 +117,17 @@ app.mysqlClient.getConnection(function (err, connection){
         console.log(err)
     } else {
         console.log('mysql connected')
-        connection.release(); // Always release back to pool
+        connection.release() // Always release back to pool
+
+        app.mysqlClient.on('connection', (connection) => {
+            connection.query(/*sql*/`SET time_zone = '+05:30'`, (err) => {
+                if (err) {
+                    console.error('Failed to set MySQL timezone:', err)
+                } else {
+                    console.log('MySQL timezone set to +05:30 for this connection')
+                }
+            })
+        })
 
         users(app)
         projects(app)
@@ -129,3 +139,46 @@ app.mysqlClient.getConnection(function (err, connection){
         })
     }
 })
+
+app.mysqlClient.on('error', function (err) {
+    console.error('MySQL error occurred:', err)
+
+    if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+        console.warn('MySQL connection lost. Attempting to reconnect...')
+
+        // Optionally reconnect automatically (not best for scale, better use pool)
+        reconnect()
+    } else {
+        throw err // For other errors, you might want to crash or alert
+    }
+})
+
+function reconnect() {
+    app.mysqlClient = mysql.createConnection({
+        host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        waitForConnections: true,
+        connectionLimit: 5,
+        queueLimit: 0
+    })
+
+    app.mysqlClient.connect(err => {
+        if (err) {
+            console.error('Reconnection attempt failed:', err)
+            setTimeout(reconnect, 2000) // Retry after 2 seconds
+        } else {
+            console.log('Reconnected to MySQL')
+        }
+    });
+
+    app.mysqlClient.on('error', function (err) {
+        console.error('MySQL error after reconnect:', err)
+        if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            reconnect()
+        } else {
+            throw err
+        }
+    })
+}
