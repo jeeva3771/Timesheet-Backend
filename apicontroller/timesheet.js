@@ -290,56 +290,33 @@ async function readTimesheets(req, res) {
 
 async function readTimesheetById(req, res) {
     const mysqlClient = req.app.mysqlClient
-    const employee = req.params.employeeId
+    const timesheetId = req.params.timesheetId
 
     try {
-        const project = await mysqlQuery(/*sql*/`
+        const timesheet = await mysqlQuery(/*sql*/`
             SELECT 
-                p.*,
+                t.*,
                 ur.name AS createdName,
+                p.projectName AS project,
                 ur2.name AS updatedName,
-                ur3.name AS managerName,
-                ue.userId AS employeeId,
-                ue.name AS employeeName,
-                DATE_FORMAT(p.startDate, "%d-%b-%Y") AS projectStart,
-                DATE_FORMAT(p.endDate, "%d-%b-%Y") AS projectEnd,
-                DATE_FORMAT(p.createdAt, "%d-%b-%Y %r") AS createdTime,
-                DATE_FORMAT(p.updatedAt, "%d-%b-%Y %r") AS updatedTime
-            FROM projects AS p
-            LEFT JOIN users AS ur ON ur.userId = p.createdBy
-            LEFT JOIN users AS ur2 ON ur2.userId = p.updatedBy
-            LEFT JOIN users AS ur3 ON ur3.userId = p.managerId
-            LEFT JOIN projectEmployees AS pe ON pe.projectId = p.projectId
-            LEFT JOIN users AS ue ON ue.userId = pe.employeeId
-            WHERE p.deletedAt IS NULL 
-            AND pe.deletedAt IS NULL 
-            AND p.projectId = ?
-        `, [projectId], mysqlClient)
+                DATE_FORMAT(t.workDate, "%d-%b-%Y") AS workedDate,
+                DATE_FORMAT(t.createdAt, "%d-%b-%Y %r") AS createdTime,
+                DATE_FORMAT(t.updatedAt, "%d-%b-%Y %r") AS updatedTime
+            FROM timesheets AS t
+            LEFT JOIN users AS ur ON ur.userId = t.userId
+            LEFT JOIN projects AS p ON p.projectId = t.projectId
+            LEFT JOIN users AS ur2 ON ur2.userId = t.updatedBy
+            WHERE  
+                t.timesheetId = ?
+        `, [timesheetId], mysqlClient)
 
-        if (project.length > 0) {
-            const baseData = project[0]
-
-            const assignedEmployeeIds = []
-            const assignedEmployeeNames = []
-
-            project.forEach(row => {
-                if (row.employeeId) {
-                    assignedEmployeeIds.push(row.employeeId)
-                    assignedEmployeeNames.push(row.employeeName)
-                }
-            });
-
-            const projectData = {
-                ...baseData,
-                assignedEmployeeIds,
-                assignedEmployeeNames: assignedEmployeeNames.join(', ')
-            };
-
-            res.status(200).json([projectData])
+        if (timesheet.length > 0) {
+            res.status(200).json(timesheet)
         } else {
-            res.status(404).json('Project not found')
+            res.status(404).json('Timesheet not found')
         }
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -608,4 +585,5 @@ module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
     app.post('/api/timesheets', handleTimeSheetUploads, createTimesheet)
     app.get('/api/timesheets/documentimage/:timesheetId', readTimeSheetDocumentById)
+    app.get('/api/timesheets/:timesheetId', readTimesheetById)
 }

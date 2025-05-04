@@ -349,6 +349,23 @@ UNLOCK TABLES;
 -- Table structure for table `users`
 --
 
+
+
+ALTER TABLE `timesheets`
+ADD COLUMN `updatedBy` int DEFAULT NULL,
+ADD CONSTRAINT `fk_timesheets_updatedBy`
+FOREIGN KEY (`updatedBy`) REFERENCES `users`(`userId`);
+
+ALTER TABLE timesheets
+ADD COLUMN updatedAt TIMESTAMP null DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP;
+
+
+
+
+
+
+
+
 DROP TABLE IF EXISTS `users`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;
