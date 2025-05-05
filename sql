@@ -316,6 +316,13 @@ UNLOCK TABLES;
 -- Table structure for table `timesheets`
 --
 
+
+
+ALTER TABLE projects
+ADD CONSTRAINT unq_projects_clientName UNIQUE (clientName);
+
+
+
 DROP TABLE IF EXISTS `timesheets`;
 /*!40101 SET @saved_cs_client     = @@character_set_client */;
 /*!50503 SET character_set_client = utf8mb4 */;

@@ -112,6 +112,34 @@ app.use((req, res, next) => {
     return next()
 })
 
+// Session-based user active check
+app.use(async (req, res, next) => {
+    if (pageUsersSessionExclude.includes(req.originalUrl)) {
+      return next()
+    }
+  
+    if (!req.session.user || !req.session.user.userId) {
+      return res.status(401).send('Session expired.')
+    }
+  
+    try {
+      const [rows] = await app.mysqlClient
+        .promise()
+        .query(
+          /*sql*/`SELECT userId FROM users WHERE userId = ? AND (deletedAt IS NOT NULL OR status = 0)`,
+          [req.session.user.userId]
+        )
+  
+      if (rows.length > 0) {
+        return res.status(403).json('Account is inactive or deleted by admin.')
+      }
+  
+      next()
+    } catch (err) {
+      res.status(500).send('Internal server error.')
+    }
+})
+  
 app.mysqlClient.getConnection(function (err, connection){
     if (err) {
         console.log(err)
@@ -149,6 +177,8 @@ app.mysqlClient.on('error', function (err) {
         // Optionally reconnect automatically (not best for scale, better use pool)
         reconnect()
     } else {
+        console.log(err, 'connection error')
+
         throw err // For other errors, you might want to crash or alert
     }
 })
@@ -176,8 +206,11 @@ function reconnect() {
     app.mysqlClient.on('error', function (err) {
         console.error('MySQL error after reconnect:', err)
         if (err.code === 'PROTOCOL_CONNECTION_LOST') {
+            console.log(err.code, 'err.code')
+
             reconnect()
         } else {
+            console.log(err, 'errrrrrrrrrrrrrrrrrrrrrrrrrrrrr')
             throw err
         }
     })

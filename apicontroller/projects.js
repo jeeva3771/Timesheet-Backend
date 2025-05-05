@@ -185,10 +185,16 @@ async function readProjectNames(req, res) {
     const inProgress = req.query.inProgress === 'true'
     const hr = req.query.hr === 'true'
     const employee = req.query.employee === 'true'
-    const userId = req.query.userId || ''
     const deleted = req.query.deleted === 'true'
     const condition = req.query.condition === 'true'
-    console.log(condition, 'condtion')
+    const role = req.session.user.role
+    let userId
+
+    if (['admin', 'manager'].includes(role)) {
+        userId = req.query.userId
+    } else if (['hr', 'employee'].includes(role)) {
+        userId = req.session.user.userId
+    }
 
     try {
         let projectNamesQuery = /*sql*/`
@@ -581,34 +587,63 @@ async function readProjectHistorys(req, res) {
 
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
-    const projectName = body.projectName
+    // const projectName = body.projectName
+    const {
+        projectName,
+        clientName
+    } = body
 
     try {
-        let query, params
+        let projectQuery, projectParams, clientQuery, clientParams
 
         if (isUpdate) {
-            query = /*sql*/`
+            projectQuery = /*sql*/`
                 SELECT 
                     COUNT(*) AS count 
                 FROM projects 
                 WHERE projectName = ? AND
                     projectId != ? AND 
                     deletedAt IS NULL`
-            params = [projectName, projectId]
+            projectParams = [projectName, projectId]
         } else {
-            query = /*sql*/`
+            projectQuery = /*sql*/`
                 SELECT 
                     COUNT(*) AS count 
                 FROM projects 
                 WHERE projectName = ? AND
                     deletedAt IS NULL`
-            params = [projectName]
+            projectParams = [projectName]
         }
 
-        const [validateProjectName] = await mysqlQuery(query, params, mysqlClient)
+        if (isUpdate) {
+            clientQuery = /*sql*/`
+                SELECT 
+                    COUNT(*) AS count 
+                FROM projects 
+                WHERE clientName = ? AND
+                    projectId != ? AND 
+                    deletedAt IS NULL`
+            clientParams = [clientName, projectId]
+        } else {
+            clientQuery = /*sql*/`
+                SELECT 
+                    COUNT(*) AS count 
+                FROM projects 
+                WHERE clientName = ? AND
+                    deletedAt IS NULL`
+            clientParams = [clientName]
+        }
+
+        const [validateProjectName] = await mysqlQuery(projectQuery, projectParams, mysqlClient)
+        const [validateClientName] = await mysqlQuery(clientQuery, clientParams, mysqlClient)
+
 
         if (validateProjectName.count > 0) {
             errors.push('Project Name already exists')
+        }
+
+        if (validateClientName.count > 0) {
+            errors.push('Client Name already exists')
         }
 
         try {

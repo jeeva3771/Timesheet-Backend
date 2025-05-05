@@ -5,6 +5,13 @@ const fs = require('fs')
 const mime = require('mime-types') // Make sure to install this: npm install mime-types
 const yup = require('yup')
 
+const ALLOWED_UPDATE_KEYS = [
+    "projectId",
+    "workDate",
+    "hoursWorked",
+    "task"
+]
+
 const validHours = [
     1, 1.25, 1.5, 1.75,
     2, 2.25, 2.5, 2.75,
@@ -48,7 +55,9 @@ const timesheetValidation = yup.object().shape({
     hoursWorked: yup.number()
         .required('Hours is required')
         .oneOf(validHours, 'Invalid hours entered'),
-    
+})
+
+const addWorkDateValidation  = yup.object().shape({
     workDate: yup.date() 
         .typeError('Work date must be a valid date')
         .test(
@@ -62,6 +71,24 @@ const timesheetValidation = yup.object().shape({
         )
         .required('Work date is required')
 })
+
+const editWorkDateValidation  = yup.object().shape({
+    workDate: yup.date() 
+        .typeError('Work date must be a valid date')
+        .required('Work date is required')
+})
+
+const addValidation = yup.object().shape({
+    ...timesheetValidation.fields,
+    ...addWorkDateValidation.fields
+})
+
+const editValidation = yup.object().shape({
+    ...timesheetValidation.fields,
+    ...editWorkDateValidation.fields
+})
+
+
 
 const storage = multer.diskStorage({
     destination: (req, file, cb) => {
@@ -394,7 +421,7 @@ async function createTimesheet(req, res) {
             const file = fileArray.length > 0 ? fileArray[0] : null
             
             // Validate timesheet fields
-            const fieldValidationErrors = await validateTimesheet(timesheet, file, i)
+            const fieldValidationErrors = await validateTimesheet(timesheet, file, i, false, mysqlClient)
             
             // Group field validation errors by report number
             if (fieldValidationErrors.length > 0) {
@@ -407,7 +434,7 @@ async function createTimesheet(req, res) {
                 fieldValidationErrors.forEach(error => {
                     const errorMsg = error.replace(`Report ${reportNum}: `, '')
                     errorsByReport[reportNum].push(errorMsg)
-                });
+                })
             }
         }
         
@@ -517,35 +544,61 @@ async function createTimesheet(req, res) {
     }
 }
 
-// Helper function to clean up files
-function cleanupFiles(files) {
-    Object.values(files).forEach(fileArray => {
-        if (Array.isArray(fileArray)) {
-            fileArray.forEach(file => {
-                if (file.path && fs.existsSync(file.path)) {
-                    fs.unlinkSync(file.path)
-                }
-            })
+async function editTimesheet(req, res) {
+    const timesheetId = req.params.timesheetId
+    const mysqlClient = req.app.mysqlClient
+    const updatedBy = req.session.user.userId
+    const values = []
+    const updates = []
+
+    if (!['admin', 'manager'].includes(req.session.user.role)) {
+        return res.status(409).json('User does not have permission to edit a time sheet')
+    }
+
+    ALLOWED_UPDATE_KEYS.forEach((key) => {
+        keyValue = req.body[key]
+        if (keyValue !== undefined) {
+            values.push(keyValue)
+            updates.push(` ${key} = ?`)
         }
     })
-}
 
-async function validateTimesheet(timesheet, file, index) {
-    const errors = []
+    updates.push('updatedBy = ?')
+    values.push(updatedBy, timesheetId)
 
     try {
-        await timesheetValidation.validate(timesheet, { abortEarly: false })
-    } catch (validationErr) {
-        validationErr.errors.forEach(err => {
-            errors.push(`Report ${index + 1}: ${err}`)
-        })
-    }
+        const timesheetIsValid = await mysqlQuery(/*sql*/`
+            SELECT 
+                COUNT(*) AS count 
+            FROM timesheets 
+            WHERE timesheetId = ?`, 
+        [timesheetId], mysqlClient)
 
-    if (file && file.size > 5 * 1024 * 1024) {
-        errors.push(`Report ${index + 1}: File size exceeds 5MB`)
-    }
+        if (!timesheetIsValid.length) {
+            return res.status(404).json('Time sheet is not found')
+        }
 
-    return errors
+        const fieldValidationErrors = await validateTimesheet(req.body, null, null, true, mysqlClient)
+        if (fieldValidationErrors.length > 0) {
+            return res.status(400).json(fieldValidationErrors)
+        }
+
+        const updateUser = await mysqlQuery(/*sql*/`
+            UPDATE timesheets SET ${updates.join(', ')} 
+            WHERE timesheetId = ?`,
+            values, mysqlClient)
+
+        if (updateUser.affectedRows === 0) {
+            return res.status(204).json('No changes made')
+        }
+
+        res.status(200).json('Successfully updated...')
+    } catch (error) {
+        console.log(error)
+
+        req.log.error(error)
+        res.status(500).json(error)
+    }
 }
 
 async function readTimeSheetDocumentById(req, res) {
@@ -581,9 +634,63 @@ async function readTimeSheetDocumentById(req, res) {
     }
 }
 
+// Helper function to clean up files
+function cleanupFiles(files) {
+    Object.values(files).forEach(fileArray => {
+        if (Array.isArray(fileArray)) {
+            fileArray.forEach(file => {
+                if (file.path && fs.existsSync(file.path)) {
+                    fs.unlinkSync(file.path)
+                }
+            })
+        }
+    })
+}
+
+async function validateTimesheet(timesheet, file, index, isUpdate = false, mysqlClient) {
+    const errors = []
+
+    const [validateProjectExists] = await mysqlQuery(/*sql*/`
+        SELECT COUNT(*) AS count FROM projects 
+        WHERE projectId = ? AND deletedAt IS NULL`,
+        [timesheet.projectId], mysqlClient)
+
+    if (validateProjectExists.count === 0) {
+        errors.push('Project is deleted') 
+        return errors
+    }
+
+    if (!isUpdate) {
+        try {
+            await addValidation.validate(timesheet, { abortEarly: false })
+        } catch (validationErr) {
+            validationErr.errors.forEach(err => {
+                errors.push(`Report ${index + 1}: ${err}`)
+            })
+        }
+
+        if (file && file.size > 5 * 1024 * 1024) {
+            errors.push(`Report ${index + 1}: File size exceeds 5MB`)
+        }
+    } else if (isUpdate) {
+        try {
+            await editValidation.validate(timesheet, { abortEarly: false })
+        } catch (validationErr) {
+            validationErr.errors.forEach(err => {
+                errors.push(err)
+            })
+        }
+    }
+
+    return errors
+}
+
+
+
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
     app.post('/api/timesheets', handleTimeSheetUploads, createTimesheet)
     app.get('/api/timesheets/documentimage/:timesheetId', readTimeSheetDocumentById)
     app.get('/api/timesheets/:timesheetId', readTimesheetById)
+    app.put('/api/timesheets/:timesheetId', editTimesheet)
 }
