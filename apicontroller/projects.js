@@ -587,14 +587,10 @@ async function readProjectHistorys(req, res) {
 
 async function validatePayload(body, isUpdate = false, projectId = null, mysqlClient) {
     const errors = []
-    // const projectName = body.projectName
-    const {
-        projectName,
-        clientName
-    } = body
+    const projectName = body.projectName
 
     try {
-        let projectQuery, projectParams, clientQuery, clientParams
+        let projectQuery, projectParams
 
         if (isUpdate) {
             projectQuery = /*sql*/`
@@ -615,35 +611,12 @@ async function validatePayload(body, isUpdate = false, projectId = null, mysqlCl
             projectParams = [projectName]
         }
 
-        if (isUpdate) {
-            clientQuery = /*sql*/`
-                SELECT 
-                    COUNT(*) AS count 
-                FROM projects 
-                WHERE clientName = ? AND
-                    projectId != ? AND 
-                    deletedAt IS NULL`
-            clientParams = [clientName, projectId]
-        } else {
-            clientQuery = /*sql*/`
-                SELECT 
-                    COUNT(*) AS count 
-                FROM projects 
-                WHERE clientName = ? AND
-                    deletedAt IS NULL`
-            clientParams = [clientName]
-        }
 
         const [validateProjectName] = await mysqlQuery(projectQuery, projectParams, mysqlClient)
-        const [validateClientName] = await mysqlQuery(clientQuery, clientParams, mysqlClient)
 
 
         if (validateProjectName.count > 0) {
             errors.push('Project Name already exists')
-        }
-
-        if (validateClientName.count > 0) {
-            errors.push('Client Name already exists')
         }
 
         try {

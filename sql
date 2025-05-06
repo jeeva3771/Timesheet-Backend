@@ -318,9 +318,6 @@ UNLOCK TABLES;
 
 
 
-ALTER TABLE projects
-ADD CONSTRAINT unq_projects_clientName UNIQUE (clientName);
-
 
 
 DROP TABLE IF EXISTS `timesheets`;

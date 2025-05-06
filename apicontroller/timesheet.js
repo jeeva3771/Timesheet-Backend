@@ -4,7 +4,7 @@ const path = require('path')
 const fs = require('fs')
 const mime = require('mime-types') // Make sure to install this: npm install mime-types
 const yup = require('yup')
-const { formatDateLocal } = require('../utilityclient/utils')
+const { formatDateLocal, capitalizeWords } = require('../utilityclient/utils')
 
 const ALLOWED_UPDATE_KEYS = [
     "projectId",
@@ -766,6 +766,40 @@ async function readTimeSheetDocumentById(req, res) {
     }
 }
 
+async function readTimesheetHistory(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    try {
+        const timesheetHistory = await mysqlQuery(/*sql*/`
+            SELECT 
+                tsh.*,
+                ur.name AS createdName,
+                u.name AS timesheetUserName,                -- user who submitted the timesheet
+                DATE_FORMAT(t.workDate, "%d-%b-%Y") AS workedDate,
+                DATE_FORMAT(tsh.createdAt, "%d-%b-%Y %r") AS editedDate,
+                CONCAT(tsh.changes, ' by ', ur.name) AS changesWithCreator
+            FROM timesheetHistorys AS tsh
+            LEFT JOIN users AS ur ON ur.userId = tsh.createdBy
+            LEFT JOIN timesheets AS t ON t.timesheetId = tsh.timesheetId
+            LEFT JOIN users AS u ON u.userId = t.userId            
+
+            ORDER BY tsh.createdAt DESC`,
+            [], mysqlClient)
+        
+        const formattedHistory = timesheetHistory.map(record => ({
+            ...record,
+            editedDate: capitalizeWords(record.editedDate),
+            changesWithCreator: record.changesWithCreator
+        }))
+            
+        res.status(200).json(formattedHistory)
+    } catch (error) {
+        console.log(error)
+        req.log.error(error)
+        res.status(500).json(error)
+    }
+
+}
+
 // Helper function to clean up files
 function cleanupFiles(files) {
     Object.values(files).forEach(fileArray => {
@@ -850,6 +884,7 @@ function formatCustomHours(value) {
 }
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
+    app.get('/api/timesheets/history', readTimesheetHistory)
     app.post('/api/timesheets', handleTimeSheetUploads, createTimesheet)
     app.get('/api/timesheets/documentimage/:timesheetId', readTimeSheetDocumentById)
     app.get('/api/timesheets/:timesheetId', readTimesheetById)
