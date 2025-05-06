@@ -4,6 +4,7 @@ const path = require('path')
 const fs = require('fs')
 const mime = require('mime-types') // Make sure to install this: npm install mime-types
 const yup = require('yup')
+const { formatDateLocal } = require('../utilityclient/utils')
 
 const ALLOWED_UPDATE_KEYS = [
     "projectId",
@@ -53,7 +54,7 @@ const timesheetValidation = yup.object().shape({
         .min(3, 'Task must be at least 3 characters long'),
 
     hoursWorked: yup.number()
-        .required('Hours is required')
+        .required('Hour(s) is required')
         .oneOf(validHours, 'Invalid hours entered'),
 })
 
@@ -307,8 +308,6 @@ async function readTimesheets(req, res) {
         })
 
     } catch (error) {
-        console.log('error')
-        console.log(error)
         req.log.error(error)
         res.status(500).json('Something went wrong. Please try again later.')
     }
@@ -543,17 +542,75 @@ async function createTimesheet(req, res) {
     }
 }
 
+// async function editTimesheet(req, res) {
+//     const timesheetId = req.params.timesheetId
+//     const mysqlClient = req.app.mysqlClient
+//     const updatedBy = req.session.user.userId
+//     const values = []
+//     const updates = []
+
+//     if (!['admin', 'manager'].includes(req.session.user.role)) {
+//         return res.status(409).json('User does not have permission to edit a time sheet')
+//     }
+
+//     ALLOWED_UPDATE_KEYS.forEach((key) => {
+//         keyValue = req.body[key]
+//         if (keyValue !== undefined) {
+//             values.push(keyValue)
+//             updates.push(` ${key} = ?`)
+//         }
+//     })
+
+//     updates.push('updatedBy = ?')
+//     values.push(updatedBy, timesheetId)
+
+//     try {
+//         const timesheet = await mysqlQuery(/*sql*/`
+//             SELECT * FROM timesheets 
+//             WHERE timesheetId = ?`, 
+//         [timesheetId], mysqlClient)
+
+//         if (!timesheet.length) {
+//             return res.status(404).json('Time sheet is not found')
+//         }
+
+//         const fieldValidationErrors = await validateTimesheet(req.body, null, null, true, mysqlClient)
+//         if (fieldValidationErrors.length > 0) {
+//             return res.status(400).json(fieldValidationErrors)
+//         }
+
+//         const updateUser = await mysqlQuery(/*sql*/`
+//             UPDATE timesheets SET ${updates.join(', ')} 
+//             WHERE timesheetId = ?`,
+//             values, mysqlClient)
+
+//         if (updateUser.affectedRows === 0) {
+//             return res.status(204).json('No changes made')
+//         }
+
+//         res.status(200).json('Successfully updated...')
+//     } catch (error) {
+//         console.log(error)
+
+//         req.log.error(error)
+//         res.status(500).json(error)
+//     }
+// }
+
+// Backend code for editTimesheet
 async function editTimesheet(req, res) {
     const timesheetId = req.params.timesheetId
     const mysqlClient = req.app.mysqlClient
     const updatedBy = req.session.user.userId
     const values = []
     const updates = []
+    let changes = []
 
     if (!['admin', 'manager'].includes(req.session.user.role)) {
         return res.status(409).json('User does not have permission to edit a time sheet')
     }
 
+    // Specify which fields can be updated
     ALLOWED_UPDATE_KEYS.forEach((key) => {
         keyValue = req.body[key]
         if (keyValue !== undefined) {
@@ -566,35 +623,111 @@ async function editTimesheet(req, res) {
     values.push(updatedBy, timesheetId)
 
     try {
-        const timesheetIsValid = await mysqlQuery(/*sql*/`
-            SELECT 
-                COUNT(*) AS count 
-            FROM timesheets 
-            WHERE timesheetId = ?`, 
+        // Check if timesheet exists
+        const timesheet = await mysqlQuery(/*sql*/`
+            SELECT t.*, p.projectName AS project
+            FROM timesheets t
+            LEFT JOIN projects p ON p.projectId = t.projectId
+            WHERE t.timesheetId = ?`, 
         [timesheetId], mysqlClient)
 
-        if (!timesheetIsValid.length) {
+        if (!timesheet.length) {
             return res.status(404).json('Time sheet is not found')
         }
 
+        const originalTimesheet = timesheet[0]
+
+        // Validate timesheet data
         const fieldValidationErrors = await validateTimesheet(req.body, null, null, true, mysqlClient)
         if (fieldValidationErrors.length > 0) {
             return res.status(400).json(fieldValidationErrors)
         }
 
-        const updateUser = await mysqlQuery(/*sql*/`
+        // Track changes similar to project edit
+        for (const key of ALLOWED_UPDATE_KEYS) {
+            const newValue = req.body[key]
+            const oldValue = originalTimesheet[key]
+            
+            if (newValue !== undefined && newValue !== oldValue) {
+                if (key === 'workDate') {
+                    const formattedNew = formatDateLocal(newValue)
+                    const formattedOld = formatDateLocal(oldValue)
+                    if (formattedNew !== formattedOld) {
+                        changes.push(`Date changed from '${formattedOld}' to '${formattedNew}'`)
+                    }
+                } else if (key === 'projectId') {
+                    // Get project names for the IDs
+                    const [projectRows] = await Promise.all([
+                        mysqlQuery(/*sql*/`
+                            SELECT projectId, projectName 
+                            FROM projects 
+                            WHERE projectId IN (?, ?)`, 
+                        [oldValue, newValue], mysqlClient)
+                    ])
+                    
+                    // const oldProject = projectRows.find(proj => proj.projectId == oldValue)?.projectName || oldValue
+                    // const newProject = projectRows.find(proj => proj.projectId == newValue)?.projectName || newValue
+                    
+                    // changes.push(`Project changed from '${oldProject}' to '${newProject}'`)
+                   
+                    
+                    const oldProjectRaw = projectRows.find(proj => proj.projectId == oldValue)?.projectName || oldValue;
+                    const newProjectRaw = projectRows.find(proj => proj.projectId == newValue)?.projectName || newValue;
+                    
+                    const oldProject = typeof oldProjectRaw === 'string' ? cleanProjectName(oldProjectRaw) : oldProjectRaw;
+                    const newProject = typeof newProjectRaw === 'string' ? cleanProjectName(newProjectRaw) : newProjectRaw;
+                    
+                    changes.push(`Project changed from '${oldProject}' to '${newProject}'`);
+                } else if (key === 'hoursWorked') {
+                    const oldHours = parseFloat(oldValue);
+                    const newHours = parseFloat(newValue);
+
+                    const formattedOld = formatCustomHours(oldHours);
+                    const formattedNew = formatCustomHours(newHours);
+
+                    if (formattedOld !== formattedNew) {
+                        changes.push(`Hours worked changed from '${formattedOld} hour(s)' to '${formattedNew} hour(s)'`);
+                    }
+
+                    // changes.push(`Hours worked changed from '${oldValue}' to '${newValue}'`)
+                } else if (key === 'task') {
+                    // For task changes, you might want to abbreviate the task text if it's too long
+                    const oldTask = oldValue?.length > 30 ? oldValue.substring(0, 30) + '...' : oldValue
+                    const newTask = newValue?.length > 30 ? newValue.substring(0, 30) + '...' : newValue
+                    
+                    changes.push(`Task changed from '${oldTask}' to '${newTask}'`)
+                }
+            }
+        }
+
+        // Update timesheet
+        const updateTimesheet = await mysqlQuery(/*sql*/`
             UPDATE timesheets SET ${updates.join(', ')} 
             WHERE timesheetId = ?`,
             values, mysqlClient)
 
-        if (updateUser.affectedRows === 0) {
+        if (updateTimesheet.affectedRows === 0) {
             return res.status(204).json('No changes made')
+        }
+
+        // Record changes in history table
+        if (changes.length > 0) {
+            const changesText = changes.join('|| ')
+
+            const historyEntry = await mysqlQuery(/*sql*/`
+                INSERT INTO timesheetHistorys 
+                    (timesheetId, changes, createdBy) 
+                VALUES (?, ?, ?)`,
+                [timesheetId, changesText, updatedBy], mysqlClient)
+
+            if (historyEntry.affectedRows === 0) {
+                return res.status(400).json('Failed to insert history record')
+            }
         }
 
         res.status(200).json('Successfully updated...')
     } catch (error) {
         console.log(error)
-
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -650,14 +783,16 @@ async function validateTimesheet(timesheet, file, index, isUpdate = false, mysql
     const errors = []
 
     if (!isUpdate) {
-        const [validateProjectExists] = await mysqlQuery(/*sql*/`
-            SELECT COUNT(*) AS count FROM projects 
-            WHERE projectId = ? AND deletedAt IS NULL`,
-            [timesheet.projectId], mysqlClient)
-    
-        if (validateProjectExists.count === 0) {
-            errors.push('Project is deleted') 
-            return errors
+        if (timesheet.projectId) {
+            const [validateProjectExists] = await mysqlQuery(/*sql*/`
+                SELECT COUNT(*) AS count FROM projects 
+                WHERE projectId = ? AND deletedAt IS NULL`,
+                [timesheet.projectId], mysqlClient)
+        
+            if (validateProjectExists.count === 0) {
+                errors.push('Project is deleted') 
+                return errors
+            }
         }
         
         try {
@@ -684,6 +819,35 @@ async function validateTimesheet(timesheet, file, index, isUpdate = false, mysql
     return errors
 }
 
+function cleanProjectName(name) {
+    const hasDeletedTimestamp = /\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(name)
+    const cleanedName = name
+        .replace(/\s*\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/, '')
+        .replace(/-\s*$/, '')
+        .trim()
+    return hasDeletedTimestamp ? `${cleanedName} (Deleted)` : cleanedName
+}
+
+function formatCustomHours(value) {
+    const floatVal = parseFloat(value)
+    const base = Math.floor(floatVal)
+    const decimal = floatVal - base
+
+    if (decimal === 0) return `${base}`
+
+    let suffix = '00'
+    if (decimal > 0 && decimal <= 0.26) {
+        suffix = '15'
+    } else if (decimal > 0.26 && decimal <= 0.51) {
+        suffix = '30'
+    } else if (decimal > 0.51 && decimal <= 0.76) {
+        suffix = '45'
+    } else {
+        return `${base + 1}`
+    }
+
+    return `${base}.${suffix}`
+}
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
     app.post('/api/timesheets', handleTimeSheetUploads, createTimesheet)

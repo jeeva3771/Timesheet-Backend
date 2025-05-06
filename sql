@@ -445,3 +445,15 @@ CONSTRAINT fk_projectHistorys_projectId FOREIGN KEY (projectId) REFERENCES proje
   CONSTRAINT fk_projectHistorys_updatedBy FOREIGN KEY (updatedBy) REFERENCES users (userId)
      
 )
+
+
+create table timesheetHistorys (
+	timesheetHistoryId int not null auto_increment,
+    timesheetId int,
+    changes text,
+    createdAt timestamp NOT NULL DEFAULT current_timestamp(),
+    createdBy int,
+	PRIMARY KEY (timesheetHistoryId),
+	CONSTRAINT fk_timesheetHistorys_timesheetId FOREIGN KEY (timesheetId) REFERENCES timesheets (timesheetId),
+    CONSTRAINT fk_timesheetHistorys_createdBy FOREIGN KEY (createdBy) REFERENCES users (userId)
+)
