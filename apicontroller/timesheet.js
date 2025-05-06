@@ -324,14 +324,13 @@ async function readTimesheetById(req, res) {
             SELECT 
                 t.*,
                 ur.name AS createdName,
-                p.projectName AS project,
+                ur.role AS role,
                 ur2.name AS updatedName,
                 DATE_FORMAT(t.workDate, "%d-%b-%Y") AS workedDate,
                 DATE_FORMAT(t.createdAt, "%d-%b-%Y %r") AS createdTime,
                 DATE_FORMAT(t.updatedAt, "%d-%b-%Y %r") AS updatedTime
             FROM timesheets AS t
             LEFT JOIN users AS ur ON ur.userId = t.userId
-            LEFT JOIN projects AS p ON p.projectId = t.projectId
             LEFT JOIN users AS ur2 ON ur2.userId = t.updatedBy
             WHERE  
                 t.timesheetId = ?
@@ -650,17 +649,17 @@ function cleanupFiles(files) {
 async function validateTimesheet(timesheet, file, index, isUpdate = false, mysqlClient) {
     const errors = []
 
-    const [validateProjectExists] = await mysqlQuery(/*sql*/`
-        SELECT COUNT(*) AS count FROM projects 
-        WHERE projectId = ? AND deletedAt IS NULL`,
-        [timesheet.projectId], mysqlClient)
-
-    if (validateProjectExists.count === 0) {
-        errors.push('Project is deleted') 
-        return errors
-    }
-
     if (!isUpdate) {
+        const [validateProjectExists] = await mysqlQuery(/*sql*/`
+            SELECT COUNT(*) AS count FROM projects 
+            WHERE projectId = ? AND deletedAt IS NULL`,
+            [timesheet.projectId], mysqlClient)
+    
+        if (validateProjectExists.count === 0) {
+            errors.push('Project is deleted') 
+            return errors
+        }
+        
         try {
             await addValidation.validate(timesheet, { abortEarly: false })
         } catch (validationErr) {
@@ -684,8 +683,6 @@ async function validateTimesheet(timesheet, file, index, isUpdate = false, mysql
 
     return errors
 }
-
-
 
 module.exports = (app) => {
     app.get('/api/timesheets', readTimesheets)
