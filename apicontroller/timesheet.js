@@ -787,7 +787,7 @@ async function readTimesheetHistory(req, res) {
         
         const formattedHistory = timesheetHistory.map(record => ({
             ...record,
-            editedDate: capitalizeWords(record.editedDate),
+            createdName: capitalizeWords(record.createdName),
             changesWithCreator: record.changesWithCreator
         }))
             

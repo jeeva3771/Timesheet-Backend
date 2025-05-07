@@ -8,6 +8,7 @@ const sharp = require('sharp')
 const yup = require('yup')
 const { subYears } = require('date-fns')
 const md5 = require('md5')
+const { capitalizeWords } = require('../utilityclient/utils')
 
 const storage = multer.diskStorage({
     destination: function (req, file, cb) {
@@ -578,6 +579,34 @@ async function deleteUserById(req, res) {
             return res.status(404).json('User is not found')
         }
 
+        const managedProjects = await mysqlQuery(/*sql*/`
+            SELECT projectName 
+            FROM projects 
+            WHERE managerId = ? 
+            AND deletedAt IS NULL`,
+            [userId], mysqlClient)
+            
+        if (managedProjects.length > 0) {
+            const projectNames = managedProjects.map(p => p.projectName).join(', ')
+            return res.status(409).json(`User is assigned as manager for the following project(s): ${capitalizeWords(projectNames)}. Please assign different managers to these projects before deleting this user.`)
+        }
+
+
+        const projectAssignments = await mysqlQuery(/*sql*/`
+            SELECT p.projectName 
+            FROM projectEmployees pe
+            JOIN projects p ON pe.projectId = p.projectId
+            WHERE pe.employeeId = ? 
+            AND pe.deletedAt IS NULL
+            AND p.deletedAt IS NULL`,
+            [userId], mysqlClient)
+
+        // If user is assigned to any projects, return error with specific projects
+        if (projectAssignments.length > 0) {
+            const projectNames = projectAssignments.map(p => p.projectName).join(', ')
+            return res.status(409).json(`User is assigned to the following project(s): ${capitalizeWords(projectNames)}. Please remove user from these projects before deleting.`)
+        }
+
         const oldFilePath = await readUserImage(userId, mysqlClient)
 
         const deletedUser = await mysqlQuery(/*sql*/`
@@ -599,7 +628,7 @@ async function deleteUserById(req, res) {
             const imagePath = path.join(rootDir, 'useruploads', oldFilePath)
             await deleteFile(imagePath, fs)
         }
-        res.status(200).json('Deleted successfully')
+        res.status(200).json('Deleted successfully...')
     } catch (error) {
         req.log.error(error)
         res.status(500).json(error)
