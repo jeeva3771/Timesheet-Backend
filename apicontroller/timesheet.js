@@ -671,22 +671,22 @@ async function editTimesheet(req, res) {
                     // changes.push(`Project changed from '${oldProject}' to '${newProject}'`)
                    
                     
-                    const oldProjectRaw = projectRows.find(proj => proj.projectId == oldValue)?.projectName || oldValue;
-                    const newProjectRaw = projectRows.find(proj => proj.projectId == newValue)?.projectName || newValue;
+                    const oldProjectRaw = projectRows.find(proj => proj.projectId == oldValue)?.projectName || oldValue
+                    const newProjectRaw = projectRows.find(proj => proj.projectId == newValue)?.projectName || newValue
                     
-                    const oldProject = typeof oldProjectRaw === 'string' ? cleanProjectName(oldProjectRaw) : oldProjectRaw;
-                    const newProject = typeof newProjectRaw === 'string' ? cleanProjectName(newProjectRaw) : newProjectRaw;
+                    const oldProject = typeof oldProjectRaw === 'string' ? cleanProjectName(oldProjectRaw) : oldProjectRaw
+                    const newProject = typeof newProjectRaw === 'string' ? cleanProjectName(newProjectRaw) : newProjectRaw
                     
                     changes.push(`Project changed from '${oldProject}' to '${newProject}'`);
                 } else if (key === 'hoursWorked') {
-                    const oldHours = parseFloat(oldValue);
-                    const newHours = parseFloat(newValue);
+                    const oldHours = parseFloat(oldValue)
+                    const newHours = parseFloat(newValue)
 
-                    const formattedOld = formatCustomHours(oldHours);
-                    const formattedNew = formatCustomHours(newHours);
+                    const formattedOld = formatCustomHours(oldHours)
+                    const formattedNew = formatCustomHours(newHours)
 
                     if (formattedOld !== formattedNew) {
-                        changes.push(`Hours worked changed from '${formattedOld} hour(s)' to '${formattedNew} hour(s)'`);
+                        changes.push(`Hours worked changed from '${formattedOld} hour(s)' to '${formattedNew} hour(s)'`)
                     }
 
                     // changes.push(`Hours worked changed from '${oldValue}' to '${newValue}'`)

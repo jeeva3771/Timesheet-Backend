@@ -1,4 +1,4 @@
-// const dotenv = require('dotenv')
+const dotenv = require('dotenv')
 const express = require('express')
 const mysql = require('mysql2')
 const pino = require('pino')
@@ -14,7 +14,7 @@ if (!fs.existsSync('./sessions')) {
 
 const { v4: uuidv4 } = require('uuid')
 const app = express()
-// dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
+dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
 
 //apicontroller
 const dashBoard = require('./apicontroller/dasboard')
@@ -55,8 +55,8 @@ app.use(express.json())
 app.use(cookieParser())
 
 const corsOptions = {
-    origin: 'https://yellowgreen-crow-110465.hostingersite.com',
-    // origin: 'http://localhost:5173',
+    // origin: 'https://yellowgreen-crow-110465.hostingersite.com',
+    origin: 'http://localhost:5173',
     methods: ['GET', 'POST', 'PUT', 'DELETE'], // Allow specific methods
     credentials : true,
 }
@@ -74,8 +74,8 @@ app.use(session({
     saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 * 60 * 24, // 1 day
-        // secure: false,  (when http)
-        secure: true,
+        secure: false,  //(when http)
+        // secure: true,
 
     }
 }))
