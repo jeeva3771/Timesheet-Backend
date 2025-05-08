@@ -69,7 +69,7 @@ app.use(session({
         retries: 0,
         ttl: 1000 * 60 * 60 * 24
     }),
-    secret: process.env.SESSION_SECRET,
+    secret: process.env.SESSION_SECRET || 'default_secret_key',
     resave: true,
     saveUninitialized: true,
     cookie: {
