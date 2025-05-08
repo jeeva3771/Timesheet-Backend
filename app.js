@@ -15,14 +15,6 @@ if (!fs.existsSync('./sessions')) {
 const { v4: uuidv4 } = require('uuid')
 const app = express()
 dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
-console.log(process.env.NODE_ENV, 
-    {host: process.env.DB_HOST,
-        user: process.env.DB_USER,
-        password: process.env.DB_PASSWORD,
-        database: process.env.DB_NAME,
-        secret: process.env.SESSION_SECRET  
-    }
-)
 
 //apicontroller
 const dashBoard = require('./apicontroller/dasboard')
@@ -82,8 +74,8 @@ app.use(session({
     saveUninitialized: true,
     cookie: {
         maxAge: 1000 * 60 * 60 * 24, // 1 day
-        // secure: false,  //(when http)
-        secure: true,
+        secure: false,  //(when http)
+        // secure: true,
   
     }
 }))

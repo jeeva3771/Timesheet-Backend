@@ -81,8 +81,8 @@ async function readClientCount(req, res) {
 
 
 module.exports = (app) => {
-    app.get('/api/count/managerandemployee', readManagerAndEmployeeCount)
-    app.get('/api/count/projects', readProjectCount)
-    app.get('/api/count/clients', readClientCount)
+    app.get('/api/counts/users', readManagerAndEmployeeCount)
+    app.get('/api/counts/projects', readProjectCount)
+    app.get('/api/counts/clients', readClientCount)
 
 }
