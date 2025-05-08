@@ -15,6 +15,14 @@ if (!fs.existsSync('./sessions')) {
 const { v4: uuidv4 } = require('uuid')
 const app = express()
 dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
+console.log(process.env.NODE_ENV, 
+    {host: process.env.DB_HOST,
+        user: process.env.DB_USER,
+        password: process.env.DB_PASSWORD,
+        database: process.env.DB_NAME,
+        secret: process.env.SESSION_SECRET  
+    }
+)
 
 //apicontroller
 const dashBoard = require('./apicontroller/dasboard')
