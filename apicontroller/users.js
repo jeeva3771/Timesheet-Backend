@@ -565,13 +565,15 @@ async function editUser(req, res) {
 }
 
 async function editUserProfileInfo(req, res) {
-    const userId = req.params.userId
+    const {
+        userId
+    } = req.session.user
     const mysqlClient = req.app.mysqlClient
-    const updatedBy = req.session.user.userId
     const values = []
     const updates = []
+    console.log(userId)
 
-    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+    if (!['admin'].includes(req.session.user.role)) {
         return res.status(409).json('User does not have permission to edit')
     }
 
@@ -590,7 +592,7 @@ async function editUserProfileInfo(req, res) {
         })
 
         updates.push('updatedBy = ?')
-        values.push(updatedBy, userId)
+        values.push(userId, userId)
 
         const validationErrors = await validateMainPayload(req.body, true, userId, mysqlClient)
         if (validationErrors.length > 0) {
@@ -1114,6 +1116,7 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
+    app.put('/api/users/profileinfo/', editUserProfileInfo)
     app.get('/api/users/avatar/:userId', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
     app.put('/api/users/resetpassword', processResetPassword)
@@ -1122,7 +1125,6 @@ module.exports = (app) => {
     app.get('/api/users/:userId', readUserById)
     app.post('/api/users', multerMiddleware, createUser)
     app.put('/api/users/:userId', multerMiddleware, editUser)
-    app.put('/api/users/profileinfo/:userId', editUserProfileInfo)
     app.delete('/api/users/:userId', deleteUserById)
     app.delete('/api/users/deleteavatar/:userId', deleteUserAvatar)
     app.put('/api/users/editavatar/:userId', multerMiddleware, updateUserAvatar)
