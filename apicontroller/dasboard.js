@@ -27,7 +27,6 @@ async function readManagerAndEmployeeCount(req, res) {
         }
         res.status(200).json(count)
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error.message)
     }

@@ -36,10 +36,10 @@ const projectValidation = yup.object().shape({
 
 async function readProjects(req, res) {
     const mysqlClient = req.app.mysqlClient
-    const limit = req.query.limit ? parseInt(req.query.limit) : null
-    const page = req.query.page ? parseInt(req.query.page) : null
+    const limit = req.query.limit ? parseInt(req.query.limit) : -1
+    const page = req.query.page ? parseInt(req.query.page) : 1
     const offset = limit && page ? (page - 1) * limit : null
-    const orderBy = req.query.orderby || 'p.projectId'
+    const orderBy = req.query.orderby || 'p.createdAt'
     const sort = req.query.sort || 'DESC'
     const searchQuery = req.query.search || ''
     const searchPattern = `%${searchQuery}%`

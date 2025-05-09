@@ -564,6 +564,58 @@ async function editUser(req, res) {
     }
 }
 
+async function editUserProfileInfo(req, res) {
+    const userId = req.params.userId
+    const mysqlClient = req.app.mysqlClient
+    const updatedBy = req.session.user.userId
+    const values = []
+    const updates = []
+
+    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
+        return res.status(409).json('User does not have permission to edit')
+    }
+
+    try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (!userIsValid) {
+            return res.status(404).json('User is not found')
+        }
+
+        ALLOWED_UPDATE_KEYS.forEach((key) => {
+            const keyValue = req.body[key]
+            if (keyValue !== undefined) {
+                updates.push(`${key} = ?`)
+                values.push(keyValue)
+            }
+        })
+
+        updates.push('updatedBy = ?')
+        values.push(updatedBy, userId)
+
+        const validationErrors = await validateMainPayload(req.body, true, userId, mysqlClient)
+        if (validationErrors.length > 0) {
+            return res.status(400).json(validationErrors)
+        }
+
+        const updateUser = await mysqlQuery(/*sql*/`
+            UPDATE users SET ${updates.join(', ')} 
+            WHERE userId = ? AND deletedAt IS NULL`,
+            values,
+            mysqlClient
+        )
+
+        if (updateUser.affectedRows === 0) {
+            return res.status(204).json('No changes made')
+        }
+
+        res.status(200).json('Successfully updated...')
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).json(error)
+    }
+
+}
+
 async function deleteUserById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
@@ -1070,6 +1122,7 @@ module.exports = (app) => {
     app.get('/api/users/:userId', readUserById)
     app.post('/api/users', multerMiddleware, createUser)
     app.put('/api/users/:userId', multerMiddleware, editUser)
+    app.put('/api/users/profileinfo/:userId', editUserProfileInfo)
     app.delete('/api/users/:userId', deleteUserById)
     app.delete('/api/users/deleteavatar/:userId', deleteUserAvatar)
     app.put('/api/users/editavatar/:userId', multerMiddleware, updateUserAvatar)
