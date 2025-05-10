@@ -41,10 +41,26 @@ const multerMiddleware = upload.single('image')
 
 const mainDetailsUserValidation = yup.object().shape({
     name: yup.string().min(2, 'Name is invalid').required('Name is required'), 
+    // dob: yup
+    //     .date()
+    //     .max(subYears(new Date(), 18), 'DOB must be at least 18 years old')
+    //     .required('DOB is required'),
     dob: yup
-        .date()
-        .max(subYears(new Date(), 18), 'DOB must be at least 18 years old')
-        .required('DOB is required'),
+        .string()
+        .test('is-valid-date', 'DOB is required', function (value) {
+        if (!value) return false // empty string or undefined
+        const date = new Date(value)
+        return !isNaN(date.getTime())
+        })
+        .test(
+        'is-18-years-old',
+        'DOB must be at least 18 years old',
+        function (value) {
+            if (!value) return true // skip if already failed the previous test
+            const date = new Date(value)
+            return subYears(new Date(), 18) >= date
+        }
+    ),
     emailId: yup.string().email('Invalid email format').required('Email is required'),
 })
 
@@ -248,6 +264,33 @@ async function readUserById(req, res) {
         res.status(500).json(error)
     }
 }
+
+
+async function readUserMainDetialsById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.session.user.userId
+    try {
+        const userIsValid = await validateUserById(userId, mysqlClient)
+        if (!userIsValid) {
+            return res.status(404).json('User is not found')
+        }
+
+        const [user] = await mysqlQuery(/*sql*/`
+            SELECT 
+                name,
+                dob,
+                emailId
+            FROM users AS u
+            WHERE u.deletedAt IS NULL AND u.userId = ?`, 
+            [userId], mysqlClient)
+            
+        res.status(200).json(user)
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).json(error)
+    }
+}
+
 
 
 async function readUserAvatarById(req, res) {
@@ -571,7 +614,6 @@ async function editUserProfileInfo(req, res) {
     const mysqlClient = req.app.mysqlClient
     const values = []
     const updates = []
-    console.log(userId)
 
     if (!['admin'].includes(req.session.user.role)) {
         return res.status(409).json('User does not have permission to edit')
@@ -801,12 +843,13 @@ async function deleteUserAvatar(req, res) {
 
 async function changePassword(req, res) {
     const mysqlClient = req.app.mysqlClient
-    const userId = req.params.userId
-    const updatedBy = req.session.user.userId
+    const userId = req.session.user.userId
     const {
         oldPassword,
-        newPassword
+        newPassword,
+        confirmPassword
     } = req.body
+    let error = []
 
     try {
         const getExistsPassword = await mysqlQuery(/*sql*/`
@@ -818,14 +861,20 @@ async function changePassword(req, res) {
         if (getExistsPassword.length > 0) {
             const validatePassword = await isPasswordValid(oldPassword, getExistsPassword[0].password)
             if (validatePassword === false) {
-                return res.status(400).json("Current password Invalid.")
+                error.push("Current password Invalid")
+            }
+            if (newPassword !== confirmPassword) {
+                error.push("New password and confirm password do not match")
+            }
+            if (error.length > 0) {
+                return res.status(400).json(error)
             }
         } else {
-            return res.status(404).json('User is Invalid.')
+            return res.status(404).json('User is Invalid')
         }
 
         if (newPassword.length < 6) {
-            return res.status(400).json('New password is Invalid.')
+            return res.status(400).json('New password is Invalid')
         } 
 
         const newHashGenerator = await hashPassword(newPassword)
@@ -836,7 +885,7 @@ async function changePassword(req, res) {
                 updatedBy = ?
             WHERE userId = ? AND 
                 deletedAt IS NULL`,
-            [newHashGenerator, updatedBy, userId],
+            [newHashGenerator, userId, userId],
         mysqlClient)
 
         if (updatePassword.affectedRows === 0) {
@@ -1116,6 +1165,8 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
+    app.put('/api/users/changepassword', changePassword)
+    app.get('/api/users/maininfo', readUserMainDetialsById)
     app.put('/api/users/profileinfo/', editUserProfileInfo)
     app.get('/api/users/avatar/:userId', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
@@ -1130,7 +1181,6 @@ module.exports = (app) => {
     app.put('/api/users/editavatar/:userId', multerMiddleware, updateUserAvatar)
     app.post('/api/users/generateotp', generateOtp)
     app.get('/api/logout', userLogOut)
-    app.put('/api/users/changepassword/:userId', changePassword)
 }
 
 

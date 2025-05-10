@@ -25,9 +25,32 @@ const projectValidation = yup.object().shape({
         .test('all-positive', 'Allot Employee must be entered', value => 
             Array.isArray(value) && value.length > 0 && value.every(id => Number.isInteger(id) && id > 0)
         ),
-    startDate: yup.date().required('Start date is required'),
-    endDate: yup.date()
-        .min(yup.ref('startDate'), 'End date cannot be before start date')
+    // startDate: yup.date().required('Start date is required'),
+    // endDate: yup.date()
+    //     .min(yup.ref('startDate'), 'End date cannot be before start date')
+    //     .required('End date is required'),
+    startDate: yup
+        .string()
+        .test('is-valid-start-date', 'Start date is invalid', function (value) {
+        if (!value) return false;
+        const date = new Date(value);
+        return !isNaN(date.getTime());
+        })
+        .required('Start date is required'),
+    endDate: yup
+        .string()
+        .test('is-valid-end-date', 'End date is invalid', function (value) {
+        if (!value) return false
+        const date = new Date(value)
+        return !isNaN(date.getTime())
+        })
+        .test('is-after-start-date', 'End date cannot be before start date', function (endValue) {
+        const { startDate } = this.parent
+        const start = new Date(startDate)
+        const end = new Date(endValue)
+        if (!startDate || isNaN(start.getTime()) || isNaN(end.getTime())) return true
+        return end >= start
+        })
         .required('End date is required'),
     status: yup.mixed()
         .oneOf(['active','pending','completed','notStarted'], 'Invalid status')
