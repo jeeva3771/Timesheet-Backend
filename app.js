@@ -91,14 +91,11 @@ app.use((req, res, next) => {
     next()
 })
 
-  
-
 const pageUsersSessionExclude = [
     '/login/',
     '/api/login/',
-    '/users/resetpassword/',
+    '/api/users/resetpassword/',
     '/api/users/generateotp/',
-    '/api/users/resetpassword/'
 ]
 
 app.use((req, res, next) => {
@@ -212,7 +209,6 @@ function reconnect() {
 
             reconnect()
         } else {
-            console.log(err, 'errrrrrrrrrrrrrrrrrrrrrrrrrrrrr')
             throw err
         }
     })

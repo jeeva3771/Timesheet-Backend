@@ -24,7 +24,7 @@ const fileFilter = (req, file, cb) => {
     if (file.mimetype === 'image/jpeg') {
         cb(null, true)
     } else {
-        req.fileValidationError = 'Invalid file type. Only JPEG files are allowed.'
+        req.fileValidationError = 'Invalid file type. Only JPEG files are allowed'
         cb(null, false)
     }
 }
@@ -79,9 +79,9 @@ const baseUserValidation = yup.object().shape({
 const passwordValidation = yup.object().shape({
     password: yup
         .string()
+        .required('Password is required')
         .min(6, 'Password must be at least 6 characters long')
         .matches(/[\W_]/, 'Password must contain at least one special character')
-        .required('Password is required'),
 })
 
 const ALLOWED_UPDATE_KEYS = [
@@ -733,16 +733,8 @@ async function deleteUserById(req, res) {
 
 async function updateUserAvatar(req, res) {
     let uploadedFilePath
-    const userId = req.params.userId
+    const userId = req.session.user.userId
     const mysqlClient = req.app.mysqlClient
-
-    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).json('User does not have permission to edit')
-    }
-
-    if (userId !== req.session.user.userId && req.session.user.role !== 'admin') {
-        return res.status(409).json('User is not valid to edit')
-    }
 
     if (req.file) {
         uploadedFilePath = req.file.path
@@ -796,6 +788,7 @@ async function updateUserAvatar(req, res) {
 
         return res.status(200).json('Image updated successfully')
     } catch (error) {
+        console.log(error)
         req.log.error(error)
         return res.status(500).json(error)
     }
@@ -844,12 +837,14 @@ async function deleteUserAvatar(req, res) {
 async function changePassword(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.session.user.userId
+    console.log('ffffffffffffff')
+
     const {
         oldPassword,
         newPassword,
         confirmPassword
     } = req.body
-    let error = []
+    let errors = []
 
     try {
         const getExistsPassword = await mysqlQuery(/*sql*/`
@@ -861,13 +856,23 @@ async function changePassword(req, res) {
         if (getExistsPassword.length > 0) {
             const validatePassword = await isPasswordValid(oldPassword, getExistsPassword[0].password)
             if (validatePassword === false) {
-                error.push("Current password Invalid")
+                errors.push("Current password Invalid")
             }
+            
             if (newPassword !== confirmPassword) {
-                error.push("New password and confirm password do not match")
+                errors.push("New password and confirm password do not match")
+                return res.status(400).json(errors)
             }
-            if (error.length > 0) {
-                return res.status(400).json(error)
+            
+            try {
+                await passwordValidation.validate({password: newPassword}, { abortEarly: false })
+            } catch (err) {
+                errors.push(...err.errors)
+                return res.status(400).json(errors)
+            }
+
+            if (errors.length > 0) {
+                return res.status(400).json(errors)
             }
         } else {
             return res.status(404).json('User is Invalid')
@@ -914,7 +919,7 @@ async function generateOtp(req, res) {
             [emailId], mysqlClient)
 
         if (user.length === 0) {
-            return res.status(404).json('Invalid Email.')
+            return res.status(404).json('Invalid Email')
         }
 
         const UserOtpTiming = user[0].otpTiming
@@ -946,7 +951,6 @@ async function generateOtp(req, res) {
         req.session.resetPassword = emailId
         return res.status(200).json('success')
     } catch (error) {
-        console.log(error)
         req.log.error(error)
         res.status(500).json(error)
     }
@@ -955,11 +959,19 @@ async function generateOtp(req, res) {
 async function processResetPassword(req, res) {
     const mysqlClient = req.app.mysqlClient
     const emailId = req.session.resetPassword
-    const { password = null, otp = null } = req.body
+    const { password, otp, confirmPassword} = req.body
     const currentTime = new Date().getTime()
     const otpAttemptMax = 3
 
     try {
+        if (!otp || !password || !confirmPassword) {
+            const errors = []
+            if (!otp) errors.push('OTP is required')
+            if (!password) errors.push('Password is required')
+            if (!confirmPassword) errors.push('Confirm password is required')
+            return res.status(400).json(errors.join(', '))
+        }
+
         const userDetails = await mysqlQuery(/*sql*/`
             SELECT otp, otpAttempt, otpTiming
             FROM users 
@@ -999,9 +1011,21 @@ async function processResetPassword(req, res) {
         }
 
         if (otp === userOtp) {
+            if (password !== confirmPassword) {
+                return res.status(400).json("New password and confirm password do not match")
+            }
+            
+            if (password.length < 6 && confirmPassword.length < 6) {
+                return res.status(400).json("Password and Confirm Password must be at least 6 characters long.")
+            }
+            
             if (password.length < 6) {
-                return res.status(400).json('Password must be at least 6 characters long.')
-            } 
+                return res.status(400).json("Password must be at least 6 characters long.")
+            }
+            
+            if (confirmPassword.length < 6) {
+                return res.status(400).json("Confirm Password must be at least 6 characters long.")
+            }
             
             const hashGenerator = await hashPassword(password)
             const resetPassword = await mysqlQuery(/*sql*/`UPDATE users SET password = ?, otp = null,
@@ -1030,7 +1054,7 @@ async function processResetPassword(req, res) {
                 if (updateOtpAttempt.affectedRows === 0) {
                     return res.status(404).json('Oops! Something went wrong. Please contact admin.')
                 }
-                return res.status(400).json('Invalid OTP.')
+                return res.status(400).json('Invalid OTP')
             }
         }
     } catch (error) {
@@ -1138,7 +1162,7 @@ async function validateMainPayload(body, isUpdate = false, userId = null, mysqlC
     } catch (err) { 
         errors.push(...err.errors)
     }
-    
+
     return errors
 }
 
@@ -1165,12 +1189,13 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
+    app.put('/api/users/editavatar', multerMiddleware, updateUserAvatar)
+    app.put('/api/users/resetpassword', processResetPassword)
     app.put('/api/users/changepassword', changePassword)
     app.get('/api/users/maininfo', readUserMainDetialsById)
     app.put('/api/users/profileinfo/', editUserProfileInfo)
     app.get('/api/users/avatar/:userId', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
-    app.put('/api/users/resetpassword', processResetPassword)
     app.post('/api/login', authentication)                       
     app.get('/api/users', readUsers)
     app.get('/api/users/:userId', readUserById)
@@ -1178,7 +1203,6 @@ module.exports = (app) => {
     app.put('/api/users/:userId', multerMiddleware, editUser)
     app.delete('/api/users/:userId', deleteUserById)
     app.delete('/api/users/deleteavatar/:userId', deleteUserAvatar)
-    app.put('/api/users/editavatar/:userId', multerMiddleware, updateUserAvatar)
     app.post('/api/users/generateotp', generateOtp)
     app.get('/api/logout', userLogOut)
 }
