@@ -15,7 +15,7 @@ const storage = multer.diskStorage({
         cb(null, path.join(__dirname, '..', 'useruploads'))
     },
     filename: function (req, file, cb) {
-        const userId = req.params.userId
+        const userId = req.params.userId || req.session.user.userId
         cb(null, `${userId}_${Date.now()}.jpg`)
     }
 })
@@ -837,7 +837,6 @@ async function deleteUserAvatar(req, res) {
 async function changePassword(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.session.user.userId
-    console.log('ffffffffffffff')
 
     const {
         oldPassword,
@@ -1026,7 +1025,13 @@ async function processResetPassword(req, res) {
             if (confirmPassword.length < 6) {
                 return res.status(400).json("Confirm Password must be at least 6 characters long.")
             }
-            
+
+            // try {
+            //     await passwordValidation.validate({password: password}, { abortEarly: false })
+            // } catch (err) {
+            //     return res.status(400).json(...err.errors)
+            // }
+
             const hashGenerator = await hashPassword(password)
             const resetPassword = await mysqlQuery(/*sql*/`UPDATE users SET password = ?, otp = null,
                 otpAttempt = null WHERE emailId = ? AND deletedAt IS NULL`,
