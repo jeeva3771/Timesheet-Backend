@@ -38,6 +38,8 @@ function isPasswordValid(enteredPassword, storedHashedPassword) {
     return bcrypt.compare(enteredPassword, storedHashedPassword)
 }
 
+
+
 module.exports = {
     mysqlQuery,
     deleteFile,

@@ -632,7 +632,7 @@ async function editTimesheet(req, res) {
         [timesheetId], mysqlClient)
 
         if (!timesheet.length) {
-            return res.status(404).json('Time sheet is not found')
+            return res.status(404).json('Time sheet not found')
         }
 
         const originalTimesheet = timesheet[0]

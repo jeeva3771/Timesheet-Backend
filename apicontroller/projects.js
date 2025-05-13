@@ -148,7 +148,7 @@ async function readProjectById(req, res) {
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).json('Project is not found')
+            return res.status(404).json('Project not found')
         }
 
         const project = await mysqlQuery(/*sql*/`
@@ -373,7 +373,7 @@ async function editproject(req, res) {
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).json('Project is not found')
+            return res.status(404).json('Project not found')
         }
 
         const validationErrors = await validatePayload(req.body, true, projectId, mysqlClient)
@@ -519,7 +519,7 @@ async function deleteProjectById(req, res) {
     try {
         const projectIsValid = await validateProjectById(projectId, mysqlClient)
         if (!projectIsValid) {
-            return res.status(404).json('Project is not found')
+            return res.status(404).json('Project not found')
         }
 
         const [project] = await mysqlQuery(/*sql*/`

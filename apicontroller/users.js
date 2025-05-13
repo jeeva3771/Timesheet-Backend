@@ -162,66 +162,68 @@ async function readUsers(req, res) {
       ? lowerSearch === 'active' ? 1 : 0
       : rawSearch || ''
     const searchPattern = `%${searchQuery}%`
-  
-    if (!['admin'].includes(req.session.user.role)) {
-      return res.status(409).json('User does not have permission to view')
-    }
-  
-    let usersQuery = /*sql*/`
-      SELECT 
-          u.*,
-          ur.name AS createdName
-      FROM users AS u
-      LEFT JOIN users AS ur ON ur.userId = u.createdBy
-      WHERE 
-          u.deletedAt IS NULL AND 
-          ${isStatusSearch
-            ? `u.status = ?`
-            : `(u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)`}
-      ORDER BY ${orderBy} ${sort}`
-  
-    let countQuery = /*sql*/`
-      SELECT
-          COUNT(*) AS totalUserCount
-      FROM 
-          users AS u
-      LEFT JOIN users AS ur ON ur.userId = u.createdBy
-      WHERE 
-          u.deletedAt IS NULL AND
-          ${isStatusSearch
-            ? `u.status = ?`
-            : `(u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)`}
-      ORDER BY ${orderBy} ${sort}`
-  
-    let queryParameters, countQueryParameters
-  
-    if (isStatusSearch) {
-      queryParameters = [searchQuery]
-      countQueryParameters = [searchQuery]
-      if (limit >= 0) {
-        usersQuery += ' LIMIT ? OFFSET ?'
-        queryParameters.push(limit, offset)
-      }
-    } else {
-      queryParameters = [searchPattern, searchPattern, searchPattern, searchPattern]
-      countQueryParameters = [...queryParameters]
-      if (limit >= 0) {
-        usersQuery += ' LIMIT ? OFFSET ?'
-        queryParameters.push(limit, offset)
-      }
-    }
+    const userId = req.session.user.userId
   
     try {
-      const [users, totalCount] = await Promise.all([
-        mysqlQuery(usersQuery, queryParameters, mysqlClient),
-        mysqlQuery(countQuery, countQueryParameters, mysqlClient)
-      ])
+        const [userVaild] = await mysqlQuery(/*sql*/`SELECT role FROM users WHERE deletedAt IS NULL AND userId = ?`,
+            [userId], mysqlClient)
+        if (userVaild.role !== 'admin') {
+            return res.status(409).json('User does not have permission to view')
+        }
+        
+        let usersQuery = /*sql*/`
+        SELECT 
+            u.*,
+            ur.name AS createdName
+        FROM users AS u
+        LEFT JOIN users AS ur ON ur.userId = u.createdBy
+        WHERE 
+            u.deletedAt IS NULL AND 
+            ${isStatusSearch
+                ? `u.status = ?`
+                : `(u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)`}
+        ORDER BY ${orderBy} ${sort}`
+    
+        let countQuery = /*sql*/`
+        SELECT
+            COUNT(*) AS totalUserCount
+        FROM 
+            users AS u
+        LEFT JOIN users AS ur ON ur.userId = u.createdBy
+        WHERE 
+            u.deletedAt IS NULL AND
+            ${isStatusSearch
+                ? `u.status = ?`
+                : `(u.name LIKE ? OR u.emailId LIKE ? OR u.role LIKE ? OR ur.name LIKE ?)`}
+        ORDER BY ${orderBy} ${sort}`
   
-      res.status(200).json({
-        users: users,
-        userCount: totalCount[0].totalUserCount
-      })
-  
+        let queryParameters, countQueryParameters
+    
+        if (isStatusSearch) {
+        queryParameters = [searchQuery]
+        countQueryParameters = [searchQuery]
+        if (limit >= 0) {
+            usersQuery += ' LIMIT ? OFFSET ?'
+            queryParameters.push(limit, offset)
+        }
+        } else {
+        queryParameters = [searchPattern, searchPattern, searchPattern, searchPattern]
+        countQueryParameters = [...queryParameters]
+        if (limit >= 0) {
+            usersQuery += ' LIMIT ? OFFSET ?'
+            queryParameters.push(limit, offset)
+        }
+        }
+    
+        const [users, totalCount] = await Promise.all([
+            mysqlQuery(usersQuery, queryParameters, mysqlClient),
+            mysqlQuery(countQuery, countQueryParameters, mysqlClient)
+        ])
+    
+        res.status(200).json({
+            users: users,
+            userCount: totalCount[0].totalUserCount
+        })
     } catch (error) {
       req.log.error(error)
       res.status(500).json(error)
@@ -272,7 +274,7 @@ async function readUserMainDetialsById(req, res) {
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).json('User is not found')
+            return res.status(404).json('User not found')
         }
 
         const [user] = await mysqlQuery(/*sql*/`
@@ -293,9 +295,32 @@ async function readUserMainDetialsById(req, res) {
 
 
 
-async function readUserAvatarById(req, res) {
+async function readAllUserAvatarById(req, res) {
     const mysqlClient = req.app.mysqlClient
     const userId = req.params.userId
+    try {
+        const [userImage] = await mysqlQuery(/*sql*/`
+            SELECT image FROM users WHERE deletedAt IS NULL AND userId = ?`,
+            [userId], mysqlClient)
+            
+        const fileName = userImage?.image || 'default.jpg'
+        
+        const baseDir = path.join(__dirname, '..', 'useruploads')
+        const imagePath = path.join(baseDir, fileName)
+        const defaultImagePath = path.join(baseDir, 'default.jpg')
+
+        const imageToServe = fs.existsSync(imagePath) ? imagePath : defaultImagePath
+        res.setHeader('Content-Type', 'image/jpeg')
+        fs.createReadStream(imageToServe).pipe(res)
+    } catch (error) {
+        req.log.error(error)
+        res.status(500).json(error)
+    }
+}
+
+async function readUserAvatarById(req, res) {
+    const mysqlClient = req.app.mysqlClient
+    const userId = req.session.user.userId
     try {
         const [userImage] = await mysqlQuery(/*sql*/`
             SELECT image FROM users WHERE deletedAt IS NULL AND userId = ?`,
@@ -510,7 +535,7 @@ async function editUser(req, res) {
             if (req.file?.path && req.file.path !== oldFilePath) {
                 await deleteFile(req.file.path, fs)
             }
-            return res.status(404).json('User is not found')
+            return res.status(404).json('User not found')
         }
 
         ALLOWED_UPDATE_KEYS.forEach((key) => {
@@ -622,7 +647,7 @@ async function editUserProfileInfo(req, res) {
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).json('User is not found')
+            return res.status(404).json('User not found')
         }
 
         ALLOWED_UPDATE_KEYS.forEach((key) => {
@@ -672,7 +697,7 @@ async function deleteUserById(req, res) {
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
         if (!userIsValid) {
-            return res.status(404).json('User is not found')
+            return res.status(404).json('User not found')
         }
 
         const managedProjects = await mysqlQuery(/*sql*/`
@@ -746,7 +771,7 @@ async function updateUserAvatar(req, res) {
             if (uploadedFilePath) {
                 await deleteFile(uploadedFilePath, fs)
             }
-            return res.status(404).json('User is not found')
+            return res.status(404).json('User not found')
         }
 
         if (req.fileValidationError) {
@@ -796,11 +821,7 @@ async function updateUserAvatar(req, res) {
 
 async function deleteUserAvatar(req, res) {
     const mysqlClient = req.app.mysqlClient
-    const userId = req.params.userId
-
-    if (!['admin'].includes(req.session.user.role) && userId !== req.session.user.userId) {
-        return res.status(409).json('User does not have permission to delete image')
-    }
+    const userId = req.session.user.userId
 
     try {
         const userIsValid = await validateUserById(userId, mysqlClient)
@@ -810,7 +831,7 @@ async function deleteUserAvatar(req, res) {
 
         const oldFilePath = await readUserImage(userId, mysqlClient)
         if (oldFilePath === null) {
-            return res.status(404).json('Image is not found')
+            return res.status(404).json('Image not found')
         }
 
         const deleteImage = await mysqlQuery(/*sql*/`
@@ -1026,11 +1047,11 @@ async function processResetPassword(req, res) {
                 return res.status(400).json("Confirm Password must be at least 6 characters long.")
             }
 
-            // try {
-            //     await passwordValidation.validate({password: password}, { abortEarly: false })
-            // } catch (err) {
-            //     return res.status(400).json(...err.errors)
-            // }
+            try {
+                await passwordValidation.validate({password: password}, { abortEarly: false })
+            } catch (err) {
+                return res.status(400).json(...err.errors)
+            }
 
             const hashGenerator = await hashPassword(password)
             const resetPassword = await mysqlQuery(/*sql*/`UPDATE users SET password = ?, otp = null,
@@ -1194,12 +1215,14 @@ async function readUserImage(userId, mysqlClient) {
 }
 
 module.exports = (app) => {
+    app.delete('/api/users/deleteavatar', deleteUserAvatar)
     app.put('/api/users/editavatar', multerMiddleware, updateUserAvatar)
     app.put('/api/users/resetpassword', processResetPassword)
     app.put('/api/users/changepassword', changePassword)
     app.get('/api/users/maininfo', readUserMainDetialsById)
     app.put('/api/users/profileinfo/', editUserProfileInfo)
-    app.get('/api/users/avatar/:userId', readUserAvatarById)
+    app.get('/api/users/avatar/:userId', readAllUserAvatarById)
+    app.get('/api/users/avatar/', readUserAvatarById)
     app.get('/api/users/nameandrole', readUsersNameAndRole)
     app.post('/api/login', authentication)                       
     app.get('/api/users', readUsers)
@@ -1207,7 +1230,6 @@ module.exports = (app) => {
     app.post('/api/users', multerMiddleware, createUser)
     app.put('/api/users/:userId', multerMiddleware, editUser)
     app.delete('/api/users/:userId', deleteUserById)
-    app.delete('/api/users/deleteavatar/:userId', deleteUserAvatar)
     app.post('/api/users/generateotp', generateOtp)
     app.get('/api/logout', userLogOut)
 }
