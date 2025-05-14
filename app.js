@@ -16,6 +16,10 @@ const { v4: uuidv4 } = require('uuid')
 const app = express()
 dotenv.config({ path: `env/${process.env.NODE_ENV}.env` })
 
+process.on('unhandledRejection', (reason, promise) => {
+	console.error('Unhandled Rejection:', reason)
+})
+
 //apicontroller
 const dashBoard = require('./apicontroller/dasboard')
 const users = require('./apicontroller/users')
