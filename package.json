@@ -3,7 +3,7 @@
     "start": "node app.js",
     "prod": "cross-env NODE_ENV=prod node app.js",
     "devtest": "cross-env NODE_ENV=dev node app.js",
-    "build": "echo 'no build needed'",
+    "build": "echo 'no build needed'"
   },
   "dependencies": {
     "bcryptjs": "^3.0.2",
