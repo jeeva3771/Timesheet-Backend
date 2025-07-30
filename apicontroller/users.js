@@ -33,8 +33,8 @@ async function usercreate(req, res) {
         const mysqlClient = req.app.mysqlClient
 
  try {
-    const user = await mysqlQuery(/*sql*/`INSERT INTO users (name, dob, emailId, password)
-VALUES ('Jeeva', '1990-01-01', 'jeeva@example.com', 'securepass')`, [], mysqlClient)
+    const user = await mysqlQuery(/*sql*/`INSERT INTO users (name, dob, emailId, password, role, image, status)
+VALUES ('Jeeva', '1990-01-01', 'jeeva@example.com', 'securepass', 'admin', 'jpg', 1)`, [], mysqlClient)
 console.log(user + 'inseryt')
     if(!user) {
         return res.status(204).send('not found')
