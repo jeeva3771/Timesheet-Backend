@@ -160,7 +160,7 @@ app.mysqlClient.getConnection(function (err, connection){
             })
         })
 
-        // users(app)
+        users(app)
         projects(app)
         timeSheet(app)
         dashBoard(app)
