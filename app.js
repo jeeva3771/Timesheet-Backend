@@ -102,18 +102,18 @@ const pageUsersSessionExclude = [
     '/api/users/generateotp/',
 ]
 
-app.use((req, res, next) => {
-    if (pageUsersSessionExclude.includes(req.originalUrl)) {
-        return next()
-    }
+// app.use((req, res, next) => {
+//     if (pageUsersSessionExclude.includes(req.originalUrl)) {
+//         return next()
+//     }
     
-    if (req.originalUrl !== '/login/') {
-        if (req.session.isLogged !== true) {
-            return res.status(401).send('Session expired.')
-        }
-    }
-    return next()
-})
+//     if (req.originalUrl !== '/login/') {
+//         if (req.session.isLogged !== true) {
+//             return res.status(401).send('Session expired.')
+//         }
+//     }
+//     return next()
+// })
 
 // Session-based user active check
 // app.use(async (req, res, next) => {
