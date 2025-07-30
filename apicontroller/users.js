@@ -14,7 +14,8 @@ const { capitalizeWords } = require('../utilityclient/utils')
 
 async function user(req, res) {
  try {
-    const user = await mysqlQuery(/*sql*/`select * from users `)
+    const user = await mysqlQuery(/*sql*/`select * from users`)
+    console.log(user + 'slekct')
     if(!user) {
         return res.status(204).send('not found')
     }
@@ -28,7 +29,8 @@ async function user(req, res) {
 async function usercreate(req, res) {
  try {
     const user = await mysqlQuery(/*sql*/`INSERT INTO users (name, dob, emailId, password)
-VALUES ('Jeeva', '1990-01-01', 'jeeva@example.com', 'securepass');`)
+VALUES ('Jeeva', '1990-01-01', 'jeeva@example.com', 'securepass')`)
+console.log(user + 'inseryt')
     if(!user) {
         return res.status(204).send('not found')
     }
