@@ -102,46 +102,46 @@ const pageUsersSessionExclude = [
     '/api/users/generateotp/',
 ]
 
-// app.use((req, res, next) => {
-//     if (pageUsersSessionExclude.includes(req.originalUrl)) {
-//         return next()
-//     }
+app.use((req, res, next) => {
+    if (pageUsersSessionExclude.includes(req.originalUrl)) {
+        return next()
+    }
     
-//     if (req.originalUrl !== '/login/') {
-//         if (req.session.isLogged !== true) {
-//             return res.status(401).send('Session expired.')
-//         }
-//     }
-//     return next()
-// })
+    if (req.originalUrl !== '/login/') {
+        if (req.session.isLogged !== true) {
+            return res.status(401).send('Session expired.')
+        }
+    }
+    return next()
+})
 
 // Session-based user active check
-// app.use(async (req, res, next) => {
-//     if (pageUsersSessionExclude.includes(req.originalUrl)) {
-//       return next()
-//     }
+app.use(async (req, res, next) => {
+    if (pageUsersSessionExclude.includes(req.originalUrl)) {
+      return next()
+    }
   
-//     if (!req.session.user || !req.session.user.userId) {
-//       return res.status(401).send('Session expired.')
-//     }
+    if (!req.session.user || !req.session.user.userId) {
+      return res.status(401).send('Session expired.')
+    }
   
-//     try {
-//       const [rows] = await app.mysqlClient
-//         .promise()
-//         .query(
-//           /*sql*/`SELECT userId FROM users WHERE userId = ? AND (deletedAt IS NOT NULL OR status = 0)`,
-//           [req.session.user.userId]
-//         )
+    try {
+      const [rows] = await app.mysqlClient
+        .promise()
+        .query(
+          /*sql*/`SELECT userId FROM users WHERE userId = ? AND (deletedAt IS NOT NULL OR status = 0)`,
+          [req.session.user.userId]
+        )
   
-//       if (rows.length > 0) {
-//         return res.status(403).json('Account is inactive or deleted by admin.')
-//       }
+      if (rows.length > 0) {
+        return res.status(403).json('Account is inactive or deleted by admin.')
+      }
   
-//       next()
-//     } catch (err) {
-//       res.status(500).send('Internal server error.')
-//     }
-// })
+      next()
+    } catch (err) {
+      res.status(500).send('Internal server error.')
+    }
+})
   
 app.mysqlClient.getConnection(function (err, connection){
     if (err) {
